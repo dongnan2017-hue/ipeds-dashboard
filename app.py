@@ -1674,6 +1674,9 @@ def page_overview(df: pd.DataFrame, sel_groups: list | None = None):
             "LPBOOKSP": "Physical Books/FTE", "LIBLFTE": "Library Staff FTE",
         }), sort_col="Expend/FTE ($)")
 
+    with tab10:
+        _page_overview_trends(df)
+
     st.divider()
     st.subheader("Scatter Explorer")
     _scatter_explorer(df)
@@ -1886,9 +1889,6 @@ def _scatter_explorer(df: pd.DataFrame):
             st.caption(f"n = **{len(sc_df):,}** institutions with data for all three variables.")
             _scatter_albion_insight(sc_df, albion, x_col, y_col, z_col,
                                     x_var, y_var, z_var, chart_idx)
-
-    with tab10:
-        _page_overview_trends(df)
 
 
 def _page_overview_trends(df_current: pd.DataFrame):
