@@ -1921,14 +1921,19 @@ def _page_overview_trends(df_current: pd.DataFrame):
         pivot["Change"] = pivot["2024-25"] - pivot["2023-24"]
         pivot["Change %"] = (pivot["Change"] / pivot["2023-24"].abs() * 100).round(1)
 
+    def _color_change(v):
+        if pd.isna(v):
+            return ""
+        return "color: #059669; font-weight:bold" if v > 0 else ("color: #DC2626; font-weight:bold" if v < 0 else "")
+
     st.caption("National medians across all active institutions reporting each metric.")
     st.dataframe(
         pivot.style.format({
-            "2023-24": lambda v: f"{v:,.1f}" if pd.notna(v) else "—",
-            "2024-25": lambda v: f"{v:,.1f}" if pd.notna(v) else "—",
-            "Change":  lambda v: f"{v:+,.1f}" if pd.notna(v) else "—",
+            "2023-24":  lambda v: f"{v:,.1f}" if pd.notna(v) else "—",
+            "2024-25":  lambda v: f"{v:,.1f}" if pd.notna(v) else "—",
+            "Change":   lambda v: f"{v:+,.1f}" if pd.notna(v) else "—",
             "Change %": lambda v: f"{v:+.1f}%" if pd.notna(v) else "—",
-        }).background_gradient(subset=["Change"], cmap="RdYlGn", vmin=-5, vmax=5),
+        }).applymap(_color_change, subset=["Change"]),
         use_container_width=True,
     )
 
