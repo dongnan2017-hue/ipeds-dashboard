@@ -664,7 +664,8 @@ def _render_inst_pivot(inst_df: "pd.DataFrame"):
     for label, (col, _) in TREND_METRICS.items():
         row = {"Metric": label}
         for _, r in inst_df.iterrows():
-            row[r["YEAR"]] = r.get(col)
+            val = r.get(col)
+            row[r["YEAR"]] = float(val) if val is not None and not pd.isna(val) else float("nan")
         rows_out.append(row)
     piv = pd.DataFrame(rows_out).set_index("Metric")
     if "2023-24" in piv.columns and "2024-25" in piv.columns:
@@ -2071,16 +2072,15 @@ def _page_overview_trends(
         fig.update_layout(height=360, legend_title="", xaxis_title="")
         st.plotly_chart(fig, use_container_width=True)
 
-    # ── Institution Year-over-Year Lookup ─────────────────────────────────────
+    # ── Cohort summary table (only when a specific group is selected) ─────────
     st.divider()
-    st.subheader("Institution Year-over-Year Lookup")
-
     if sel_grp != "All institutions":
         n_insts = lookup_df["UNITID"].nunique()
-        st.caption(f"**{n_insts}** institutions in **{sel_grp}** found across both years.")
+        st.subheader(f"Cohort Comparison — {sel_grp}")
+        st.caption(f"**{n_insts}** institutions · both years side-by-side · "
+                   "green Δ = improved, red Δ = declined.")
 
-    # ── Summary table: all institutions in scope ──────────────────────────────
-    if not lookup_df.empty:
+    if sel_grp != "All institutions" and not lookup_df.empty:
         n_label = f"**{sel_grp}**" if sel_grp != "All institutions" else "all institutions"
         st.caption(f"Both years and Δ for {n_label}. "
                    "Click any column header to sort. Green Δ = improved, red Δ = declined.")
@@ -2147,32 +2147,33 @@ def _page_overview_trends(
             st.dataframe(styled, use_container_width=True, height=tbl_height)
         st.divider()
 
+    # ── Per-institution expanders (cohort) ───────────────────────────────────
+    if sel_grp != "All institutions" and not lookup_df.empty:
+        st.divider()
+        st.subheader(f"Each Institution — {sel_grp}")
+        st.caption("Expand any institution to see its 2023-24 vs 2024-25 metrics.")
+        # Build sorted (name, uid) list from the already-filtered lookup_df
+        uid_name = (
+            lookup_df[["UNITID", "INSTNM"]]
+            .drop_duplicates("UNITID")
+            .sort_values("INSTNM")
+        )
+        for _, irow in uid_name.iterrows():
+            uid  = irow["UNITID"]
+            name = str(irow["INSTNM"])
+            inst_rows = lookup_df[lookup_df["UNITID"] == uid].sort_values("YEAR")
+            with st.expander(name, expanded=("Albion College" in name)):
+                _render_inst_pivot(inst_rows)
+
     # ── Search: always available, searches all institutions ───────────────────
-    st.subheader("Institution Year-over-Year Lookup")
-    st.caption("Search for any institution to see its metrics across both years.")
+    st.divider()
+    st.subheader("Institution Lookup")
+    st.caption("Search any institution to see its 2023-24 vs 2024-25 metrics.")
     all_inst_names = sorted(trend_df["INSTNM"].dropna().unique())
     sel_inst = st.selectbox("Search institution", ["— select —"] + all_inst_names,
                             key="trend_inst_sel")
     if sel_inst and sel_inst != "— select —":
         _render_inst_pivot(trend_df[trend_df["INSTNM"] == sel_inst].sort_values("YEAR"))
-
-    # ── Each institution in the cohort ────────────────────────────────────────
-    if sel_grp != "All institutions":
-        st.divider()
-        st.subheader(f"Each Institution — {sel_grp}")
-        uid_list = cohort_groups.get(sel_grp, [])
-        # Build (name, uid) pairs sorted alphabetically
-        name_uid = []
-        for uid in uid_list:
-            rows = trend_df[trend_df["UNITID"] == int(uid)]
-            if rows.empty:
-                continue
-            name_uid.append((str(rows["INSTNM"].iloc[0]), int(uid)))
-        name_uid.sort()
-        for name, uid in name_uid:
-            inst_rows = trend_df[trend_df["UNITID"] == uid].sort_values("YEAR")
-            with st.expander(name, expanded=("Albion College" in name)):
-                _render_inst_pivot(inst_rows)
 
 
 # ── Page 2: Institution Profile ──────────────────────────────────────────────
