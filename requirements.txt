@@ -5,4 +5,3 @@ plotly>=5.20
 openpyxl>=3.1
 xlsxwriter>=3.2
 statsmodels>=0.14
-gdown>=4.7

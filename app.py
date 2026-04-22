@@ -53,13 +53,55 @@ def _ensure_db() -> None:
             "**Streamlit Cloud:** add `GDRIVE_DB_ID` in the app's Secrets settings."
         )
         st.stop()
-    try:
-        import gdown
-    except ImportError:
-        st.error("`gdown` is not installed. Add `gdown>=4.7` to requirements.txt.")
-        st.stop()
-    with st.spinner("Downloading database from Google Drive (first run — may take ~30 s)…"):
-        gdown.download(id=gdrive_id, output=DB_PATH, quiet=False, fuzzy=True)
+
+    import requests
+
+    with st.spinner("Downloading database from Google Drive (first run — ~30 s)…"):
+        # Step 1: initial request to get the download warning confirmation token
+        session = requests.Session()
+        url = f"https://drive.google.com/uc?export=download&id={gdrive_id}"
+        resp = session.get(url, stream=True, timeout=30)
+
+        # Step 2: Google returns a confirmation page for large files — extract token
+        confirm_token = None
+        for key, val in resp.cookies.items():
+            if key.startswith("download_warning"):
+                confirm_token = val
+                break
+
+        # Also check response content for newer-style confirmation
+        if not confirm_token and b"confirm=" in resp.content[:2048]:
+            import re
+            m = re.search(rb'confirm=([0-9A-Za-z_\-]+)', resp.content[:2048])
+            if m:
+                confirm_token = m.group(1).decode()
+
+        if confirm_token:
+            url = f"https://drive.google.com/uc?export=download&id={gdrive_id}&confirm={confirm_token}"
+            resp = session.get(url, stream=True, timeout=60)
+
+        # Step 3: stream to disk
+        tmp_path = DB_PATH + ".tmp"
+        try:
+            with open(tmp_path, "wb") as f:
+                for chunk in resp.iter_content(chunk_size=1024 * 1024):
+                    if chunk:
+                        f.write(chunk)
+            # Verify the download looks like a real DuckDB file (not an HTML error page)
+            size_mb = os.path.getsize(tmp_path) / 1024 / 1024
+            if size_mb < 1:
+                os.remove(tmp_path)
+                st.error(
+                    f"Download failed — only {size_mb:.1f} MB received (expected ~162 MB). "
+                    "Check that the Google Drive file is shared as **'Anyone with the link'**."
+                )
+                st.stop()
+            os.rename(tmp_path, DB_PATH)
+        except Exception as exc:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            st.error(f"Download error: {exc}")
+            st.stop()
 
 st.set_page_config(
     page_title="IPEDS 2024-25 Dashboard",
