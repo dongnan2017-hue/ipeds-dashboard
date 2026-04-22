@@ -644,6 +644,46 @@ def _add_albion_vline(fig, alb_row, col: str, label: str = "◆ Albion"):
     )
 
 
+# ── Shared YoY helpers (used by National Trends and Albion Trends tabs) ──────
+TREND_METRICS = {
+    "Grad Rate 150% (%)":     ("GRRTTOT",      True),
+    "FT Retention Rate (%)":  ("RET_PCF",       True),
+    "Acceptance Rate (%)":    ("DVADM01",       False),
+    "% Receiving Pell":       ("PGRNT_P",       True),
+    "In-State COA ($)":       ("CINSON",        False),
+    "Avg Faculty Salary ($)": ("SALTOTL",       True),
+    "FT Enrollment":          ("ENRFT",         True),
+    "8-yr Award Rate (%)":    ("OM1TOTLAWDP8",  True),
+    "Student:Faculty Ratio":  ("STUFACR",       False),
+}
+
+
+def _render_inst_pivot(inst_df: "pd.DataFrame"):
+    """Render Metric | 2023-24 | 2024-25 | Δ table for the given institution rows."""
+    rows_out = []
+    for label, (col, _) in TREND_METRICS.items():
+        row = {"Metric": label}
+        for _, r in inst_df.iterrows():
+            row[r["YEAR"]] = r.get(col)
+        rows_out.append(row)
+    piv = pd.DataFrame(rows_out).set_index("Metric")
+    if "2023-24" in piv.columns and "2024-25" in piv.columns:
+        piv["Δ"] = piv["2024-25"] - piv["2023-24"]
+
+    def _cd(v):
+        if pd.isna(v):
+            return ""
+        return "color:#059669;font-weight:bold" if v > 0 else (
+               "color:#DC2626;font-weight:bold" if v < 0 else "")
+
+    st.dataframe(
+        piv.style
+           .map(_cd, subset=["Δ"] if "Δ" in piv.columns else [])
+           .format(lambda v: f"{v:,.1f}" if pd.notna(v) else "—"),
+        use_container_width=True,
+    )
+
+
 # ── Page 1: National Overview ────────────────────────────────────────────────
 def page_overview(df: pd.DataFrame, sel_groups: list | None = None, year: str = "2024-25"):
     h_col, y_col = st.columns([7, 3])
@@ -1618,7 +1658,7 @@ def page_overview(df: pd.DataFrame, sel_groups: list | None = None, year: str = 
         }), sort_col="Bachelor's")
 
     with tab8:  # Institutional Finance
-        st.caption("Finance data source: DRVF2024. Public = GASB (F1); Private NP = FASB (F2).")
+        st.caption(f"Finance data source: DRVF{year[:4]}. Public = GASB (F1); Private NP = FASB (F2).")
         enr_pos = df["ENRTOT"].notna() & (df["ENRTOT"].fillna(0) > 0)
         pub = (df["CONTROL"] == 1) & enr_pos
         prv = (df["CONTROL"] == 2) & enr_pos
@@ -1687,7 +1727,7 @@ def page_overview(df: pd.DataFrame, sel_groups: list | None = None, year: str = 
         }), sort_col="Core Revenue $ (Public)")
 
     with tab9:  # Libraries
-        st.caption("Academic Library data source: DRVAL2024 (per-FTE metrics).")
+        st.caption(f"Academic Library data source: DRVAL{year[:4]} (per-FTE metrics).")
         c1, c2 = st.columns(2)
         with c1:
             lib_exp = df.dropna(subset=["LEXPTOTF"]).groupby("SECTOR_LBL")["LEXPTOTF"].median().reset_index()
@@ -1955,24 +1995,14 @@ def _scatter_explorer(df: pd.DataFrame):
                                     x_var, y_var, z_var, chart_idx)
 
 
-def _page_overview_trends(cohort_groups: dict | None = None):
+def _page_overview_trends(
+    trend_df: "pd.DataFrame",
+    lookup_df: "pd.DataFrame",
+    sel_grp: str,
+    cohort_groups: dict,
+):
     """National year-over-year trends section."""
-    if cohort_groups is None:
-        cohort_groups = load_cohort()
     st.subheader("National Trends — 2023-24 vs 2024-25")
-    trend_df = load_trends()
-
-    TREND_METRICS = {
-        "Grad Rate 150% (%)":     ("GRRTTOT",      True),
-        "FT Retention Rate (%)":  ("RET_PCF",       True),
-        "Acceptance Rate (%)":    ("DVADM01",       False),
-        "% Receiving Pell":       ("PGRNT_P",       True),
-        "In-State COA ($)":       ("CINSON",        False),
-        "Avg Faculty Salary ($)": ("SALTOTL",       True),
-        "FT Enrollment":          ("ENRFT",         True),
-        "8-yr Award Rate (%)":    ("OM1TOTLAWDP8",  True),
-        "Student:Faculty Ratio":  ("STUFACR",       False),
-    }
 
     # ── National median comparison table ──────────────────────────────────────
     rows = []
@@ -2045,20 +2075,9 @@ def _page_overview_trends(cohort_groups: dict | None = None):
     st.divider()
     st.subheader("Institution Year-over-Year Lookup")
 
-    # ── Cohort group filter ───────────────────────────────────────────────────
-    lookup_df = trend_df
-    sel_grp = "All institutions"
-    if cohort_groups:
-        gc1, gc2 = st.columns([3, 5])
-        with gc1:
-            grp_options = ["All institutions"] + sorted(cohort_groups.keys())
-            sel_grp = st.selectbox("Filter by cohort group", grp_options, key="yoy_grp_sel")
-        if sel_grp != "All institutions":
-            uid_set = set(cohort_groups[sel_grp])
-            lookup_df = trend_df[trend_df["UNITID"].isin(uid_set)]
-            with gc2:
-                n_insts = lookup_df["UNITID"].nunique()
-                st.caption(f"**{n_insts}** institutions in **{sel_grp}** found across both years.")
+    if sel_grp != "All institutions":
+        n_insts = lookup_df["UNITID"].nunique()
+        st.caption(f"**{n_insts}** institutions in **{sel_grp}** found across both years.")
 
     # ── Summary table: all institutions in scope ──────────────────────────────
     if not lookup_df.empty:
@@ -2128,29 +2147,6 @@ def _page_overview_trends(cohort_groups: dict | None = None):
             st.dataframe(styled, use_container_width=True, height=tbl_height)
         st.divider()
 
-    # ── Per-institution detail ─────────────────────────────────────────────────
-    def _render_inst_pivot(inst_df: pd.DataFrame):
-        """Render Metric | 2023-24 | 2024-25 | Δ table for the given institution rows."""
-        rows_out = []
-        for label, (col, _) in TREND_METRICS.items():
-            row = {"Metric": label}
-            for _, r in inst_df.iterrows():
-                row[r["YEAR"]] = r.get(col)
-            rows_out.append(row)
-        piv = pd.DataFrame(rows_out).set_index("Metric")
-        if "2023-24" in piv.columns and "2024-25" in piv.columns:
-            piv["Δ"] = piv["2024-25"] - piv["2023-24"]
-        def _cd(v):
-            if pd.isna(v): return ""
-            return "color:#059669;font-weight:bold" if v > 0 else (
-                   "color:#DC2626;font-weight:bold" if v < 0 else "")
-        st.dataframe(
-            piv.style
-               .map(_cd, subset=["Δ"] if "Δ" in piv.columns else [])
-               .format(lambda v: f"{v:,.1f}" if pd.notna(v) else "—"),
-            use_container_width=True,
-        )
-
     # ── Search: always available, searches all institutions ───────────────────
     st.subheader("Institution Year-over-Year Lookup")
     st.caption("Search for any institution to see its metrics across both years.")
@@ -2207,6 +2203,10 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
     row = df[df["DISPLAY_NAME"] == sel].iloc[0]
     uid = int(row["UNITID"])
     con = duckdb.connect(DB_PATH, read_only=True)
+    yr    = "2024" if year == "2024-25" else "2023"
+    yr2   = "24"   if year == "2024-25" else "23"
+    sfayr = "2324" if year == "2024-25" else "2223"
+    yr_prev = "2023" if year == "2024-25" else "2022"
 
     try:
         # Header
@@ -2217,7 +2217,8 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
         if row.get("LANDGRNT")== 1: badges.append("Land-grant")
         badge_str = "  ".join([f"`{b}`" for b in badges])
 
-        web = str(row.get("WEBADDR", "") or "")
+        _wv = row.get("WEBADDR", None)
+        web = "" if _wv is None or pd.isna(_wv) else str(_wv)
         web_md = f"[{web}](https://{web})" if web and not web.startswith("http") else (f"[{web}]({web})" if web else "")
 
         st.markdown(f"## {row['INSTNM']}")
@@ -2248,7 +2249,7 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
         with tabs[0]:
             # Mission statement
             try:
-                msn = con.execute(f"SELECT MISSION, MISSIONURL FROM IC2024MISSION WHERE UNITID={uid}").fetchone()
+                msn = con.execute(f"SELECT MISSION, MISSIONURL FROM IC{yr}MISSION WHERE UNITID={uid}").fetchone()
                 if msn and msn[0]:
                     with st.expander("Mission Statement"):
                         st.write(msn[0])
@@ -2273,7 +2274,8 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                                ("Financial Aid", "FAIDURL"), ("Application", "APPLURL"),
                                ("Net Price Calc", "NPRICURL")]
                     for lbl, key in url_map:
-                        u = str(row.get(key, "") or "")
+                        _v = row.get(key, None)
+                        u = "" if _v is None or pd.isna(_v) else str(_v)
                         if u and u != "nan":
                             href = u if u.startswith("http") else f"https://{u}"
                             st.markdown(f"**{lbl}:** [{u}]({href})")
@@ -2281,7 +2283,8 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                     st.markdown("**More URLs**")
                     url_map2 = [("Veterans", "VETURL"), ("Disability Services", "DISAURL")]
                     for lbl, key in url_map2:
-                        u = str(row.get(key, "") or "")
+                        _v = row.get(key, None)
+                        u = "" if _v is None or pd.isna(_v) else str(_v)
                         if u and u != "nan":
                             href = u if u.startswith("http") else f"https://{u}"
                             st.markdown(f"**{lbl}:** [{u}]({href})")
@@ -2323,12 +2326,12 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                 }
                 st.table(pd.DataFrame.from_dict(ind, orient="index", columns=["Value"]))
 
-            # IC2024 educational offerings
+            # IC{yr} educational offerings
             try:
-                ic = con.execute(f"SELECT * FROM IC2024 WHERE UNITID={uid}").df()
+                ic = con.execute(f"SELECT * FROM IC{yr} WHERE UNITID={uid}").df()
                 if not ic.empty:
                     ic_row = ic.iloc[0]
-                    st.subheader("Educational Offerings & Services (IC2024)")
+                    st.subheader(f"Educational Offerings & Services (IC{yr})")
                     c1, c2, c3 = st.columns(3)
 
                     with c1:
@@ -2419,14 +2422,14 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
             except Exception as ex:
                 st.info(f"Educational offerings data not available. ({ex})")
 
-            # FLAGS2024 — response status, fiscal year, tenure system
-            st.subheader("Survey Response Status & Institutional Flags (FLAGS2024)")
+            # FLAGS{yr} — response status, fiscal year, tenure system
+            st.subheader(f"Survey Response Status & Institutional Flags (FLAGS{yr})")
             try:
                 flags = con.execute(f"""
                     SELECT STAT_IC, STAT_EF, STAT_C, STAT_E12, STAT_ADM, STAT_SFA,
                            STAT_GR, STAT_GR2, STAT_OM, STAT_HR, STAT_F, STAT_AL,
                            TENURSYS, FYBEG, FYEND, COHRTSTU
-                    FROM FLAGS2024 WHERE UNITID={uid}
+                    FROM FLAGS{yr} WHERE UNITID={uid}
                 """).df()
                 if not flags.empty:
                     fg = flags.iloc[0]
@@ -2465,15 +2468,15 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                         if pd.notna(cohort):
                             st.metric("Graduation Rate Cohort Size", fmt(cohort, "int"))
                 else:
-                    st.info("FLAGS2024 data not available.")
+                    st.info(f"FLAGS{yr} data not available.")
             except Exception as ex:
-                st.info(f"FLAGS2024 not available. ({ex})")
+                st.info(f"FLAGS{yr} not available. ({ex})")
 
         # ── Tab 1: Enrollment ─────────────────────────────────────────────────
         with tabs[1]:
             c1, c2 = st.columns(2)
             with c1:
-                st.subheader("Race / Ethnicity Composition (Fall 2024)")
+                st.subheader(f"Race / Ethnicity Composition (Fall {yr})")
                 race = {
                     "White":       row.get("PCTENRWH"),
                     "Black / AA":  row.get("PCTENRBK"),
@@ -2510,18 +2513,18 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                     fig = px.bar(bar_df, x="Category", y="Count",
                                  color="Category",
                                  color_discrete_sequence=px.colors.qualitative.Set2,
-                                 title="Fall 2024 Enrollment")
+                                 title=f"Fall {yr} Enrollment")
                     fig.update_layout(showlegend=False, height=360)
                     st.plotly_chart(fig, use_container_width=True)
 
-            # 12-month enrollment from EFFY2024
+            # 12-month enrollment from EFFY{yr}
             st.subheader("12-Month Unduplicated Headcount (2023-24)")
             try:
                 effy = con.execute(f"""
                     SELECT EFFYALEV, EFYTOTLT, EFYTOTLM, EFYTOTLW,
                            EFYAIANT, EFYASIAT, EFYBKAAT, EFYHISPT,
                            EFYNHPIT, EFYWHITT, EFY2MORT, EFYUNKNT, EFYNRALT
-                    FROM EFFY2024
+                    FROM EFFY{yr}
                     WHERE UNITID={uid} AND EFFYALEV IN (1, 2, 12)
                 """).df()
                 if not effy.empty:
@@ -2570,7 +2573,7 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                 st.info(f"12-month data not available. ({ex})")
 
             # Distance education breakdown
-            st.subheader("Distance Education Mode (Fall 2024)")
+            st.subheader(f"Distance Education Mode (Fall {yr})")
             de = {
                 "Exclusively distance": row.get("PCTDEEXC"),
                 "Some distance":        row.get("PCTDESOM"),
@@ -2587,7 +2590,7 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
             try:
                 effy_dist = con.execute(f"""
                     SELECT EFFYDLEV, EFYDETOT, EFYDEEXC, EFYDESOM, EFYDENON
-                    FROM EFFY2024_DIST WHERE UNITID={uid}
+                    FROM EFFY{yr}_DIST WHERE UNITID={uid}
                 """).df()
                 if not effy_dist.empty:
                     st.subheader("12-Month Headcount by Distance Education Status")
@@ -2598,13 +2601,13 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
             except Exception:
                 pass
 
-            # EF2024A_DIST — fall enrollment by distance education status
-            st.subheader("Fall Enrollment by Distance Education Status (EF2024A_DIST)")
+            # EF{yr}A_DIST — fall enrollment by distance education status
+            st.subheader(f"Fall Enrollment by Distance Education Status (EF{yr}A_DIST)")
             try:
                 efa_dist = con.execute(f"""
                     SELECT EFDELEV, EFDETOT, EFDEEXC, EFDESOM, EFDENON,
                            EFDEEX1, EFDEEX2, EFDEEX3, EFDEEX4, EFDEEX5
-                    FROM EF2024A_DIST WHERE UNITID={uid} AND EFDELEV IN (1,2,3)
+                    FROM EF{yr}A_DIST WHERE UNITID={uid} AND EFDELEV IN (1,2,3)
                     ORDER BY EFDELEV
                 """).df()
                 if not efa_dist.empty:
@@ -2630,19 +2633,19 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                                               columns=["Mode", "Count"])
                         if not de_df.empty:
                             fig = px.pie(de_df, values="Count", names="Mode", hole=0.35,
-                                         title="Fall 2024: DE Mode (All Students)",
+                                         title=f"Fall {yr}: DE Mode (All Students)",
                                          color_discrete_sequence=["#1f77b4","#ff7f0e","#2ca02c"])
                             fig.update_layout(height=300)
                             st.plotly_chart(fig, use_container_width=True)
                 else:
                     st.info("Distance education enrollment data not available.")
             except Exception as ex:
-                st.info(f"EF2024A_DIST not available. ({ex})")
+                st.info(f"EF{yr}A_DIST not available. ({ex})")
 
-            # EFFY2024_HS — dual enrolled high school students
-            st.subheader("Dual-enrolled High School Students (EFFY2024_HS, 2023-24)")
+            # EFFY{yr}_HS — dual enrolled high school students
+            st.subheader(f"Dual-enrolled High School Students (EFFY{yr}_HS)")
             try:
-                hs = con.execute(f"SELECT * FROM EFFY2024_HS WHERE UNITID={uid}").df()
+                hs = con.execute(f"SELECT * FROM EFFY{yr}_HS WHERE UNITID={uid}").df()
                 if not hs.empty:
                     hsr = hs.iloc[0]
                     c1, c2, c3 = st.columns(3)
@@ -2674,16 +2677,16 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                 else:
                     st.info("No dual-enrolled HS student data for this institution.")
             except Exception as ex:
-                st.info(f"EFFY2024_HS not available. ({ex})")
+                st.info(f"EFFY{yr}_HS not available. ({ex})")
 
-            # EF2024A detailed enrollment by level/gender/race
-            st.subheader("Fall Enrollment by Level & Race/Ethnicity (EF2024A)")
+            # EF{yr}A detailed enrollment by level/gender/race
+            st.subheader(f"Fall Enrollment by Level & Race/Ethnicity (EF{yr}A)")
             try:
                 efa = con.execute(f"""
                     SELECT EFALEVEL, EFTOTLT, EFTOTLM, EFTOTLW,
                            EFAIANT, EFASIAT, EFBKAAT, EFHISPT,
                            EFNHPIT, EFWHITT, EF2MORT, EFUNKNT, EFNRALT
-                    FROM EF2024A
+                    FROM EF{yr}A
                     WHERE UNITID={uid} AND EFALEVEL IN (1,2,11,12,21,22)
                     ORDER BY EFALEVEL
                 """).df()
@@ -2708,8 +2711,8 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
             except Exception as ex:
                 st.info(f"Detailed enrollment not available. ({ex})")
 
-            # EF2024B — enrollment by age category
-            st.subheader("Fall Enrollment by Age Category (EF2024B)")
+            # EF{yr}B — enrollment by age category
+            st.subheader(f"Fall Enrollment by Age Category (EF{yr}B)")
             EFBAGE_LBL = {
                 1:"All ages (total)", 2:"Under 25 (total)",
                 3:"Under 18", 4:"18-19", 5:"20-21", 6:"22-24",
@@ -2723,7 +2726,7 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                            EFAGE03 AS PTMen, EFAGE04 AS PTWomen,
                            EFAGE05 AS FullTime, EFAGE06 AS PartTime,
                            EFAGE07 AS TotalMen, EFAGE08 AS TotalWomen
-                    FROM EF2024B WHERE UNITID={uid}
+                    FROM EF{yr}B WHERE UNITID={uid}
                     ORDER BY EFBAGE
                 """).df()
                 if not efb.empty:
@@ -2733,7 +2736,7 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                     if not detail.empty:
                         fig = px.bar(detail, x="Age Group", y="Total",
                                      color_discrete_sequence=["#8c564b"],
-                                     title="Total Enrollment by Age Group (Fall 2024)")
+                                     title=f"Total Enrollment by Age Group (Fall {yr})")
                         fig.update_layout(height=320, showlegend=False)
                         st.plotly_chart(fig, use_container_width=True)
                     show_cols = ["Age Group","Total","FullTime","PartTime","TotalMen","TotalWomen"]
@@ -2743,12 +2746,12 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
             except Exception as ex:
                 st.info(f"Age enrollment not available. ({ex})")
 
-            # EF2024C — state of residence of first-time freshmen
-            st.subheader("State of Origin — First-time Undergraduates (EF2024C, Top 15 States)")
+            # EF{yr}C — state of residence of first-time freshmen
+            st.subheader(f"State of Origin — First-time Undergraduates (EF{yr}C, Top 15 States)")
             try:
                 efc = con.execute(f"""
                     SELECT EFCSTATE, EFRES01, EFRES02
-                    FROM EF2024C WHERE UNITID={uid} AND EFCSTATE != 99
+                    FROM EF{yr}C WHERE UNITID={uid} AND EFCSTATE != 99
                     ORDER BY EFRES01 DESC NULLS LAST
                     LIMIT 15
                 """).df()
@@ -2771,15 +2774,15 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
             except Exception as ex:
                 st.info(f"State of origin not available. ({ex})")
 
-            # EF2024CP — enrollment by major field and race/ethnicity (4-year only)
-            st.subheader("Enrollment by Major Field & Race/Ethnicity (EF2024CP, Top 15 CIPs)")
+            # EF{yr}CP — enrollment by major field and race/ethnicity (4-year only)
+            st.subheader(f"Enrollment by Major Field & Race/Ethnicity (EF{yr}CP, Top 15 CIPs)")
             try:
                 efcp = con.execute(f"""
                     SELECT CIPCODE, SUM(EFTOTLT) AS Total,
                            SUM(EFWHITT) AS White, SUM(EFBKAAT) AS BlackAA,
                            SUM(EFHISPT) AS Hispanic, SUM(EFASIAT) AS AsianPI,
                            SUM(EFNRALT) AS Nonresident
-                    FROM EF2024CP
+                    FROM EF{yr}CP
                     WHERE UNITID={uid} AND EFALEVEL=1
                     GROUP BY CIPCODE
                     ORDER BY Total DESC NULLS LAST
@@ -2796,13 +2799,13 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
             except Exception as ex:
                 st.info(f"CIP enrollment not available. ({ex})")
 
-            # EFIA2024 — 12-month instructional activity
-            st.subheader("12-Month Instructional Activity (EFIA2024, 2023-24)")
+            # EFIA{yr} — 12-month instructional activity
+            st.subheader(f"12-Month Instructional Activity (EFIA{yr})")
             try:
                 efia = con.execute(f"""
                     SELECT ACTTYPE, CDACTUA, CNACTUA, CDACTGA,
                            EFTEUG, EFTEGD, FTEUG, FTEGD
-                    FROM EFIA2024 WHERE UNITID={uid}
+                    FROM EFIA{yr} WHERE UNITID={uid}
                 """).df()
                 if not efia.empty:
                     ACTTYPE_LBL = {1:"Credit hours",2:"Clock hours",3:"Both credit & clock",-2:"N/A"}
@@ -2820,10 +2823,10 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                 else:
                     st.info("12-month instructional activity data not available.")
             except Exception as ex:
-                st.info(f"EFIA2024 not available. ({ex})")
+                st.info(f"EFIA{yr} not available. ({ex})")
 
-            # EF2024 — fall enrollment by level (grand total, UG, grad, FT, PT)
-            st.subheader("Fall Enrollment by Level (EF2024)")
+            # EF{yr} — fall enrollment by level (grand total, UG, grad, FT, PT)
+            st.subheader(f"Fall Enrollment by Level (EF{yr})")
             EFLEVEL_LBL = {
                 10: "All students (total)",
                 20: "Undergraduate (total)",
@@ -2838,7 +2841,7 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
             try:
                 ef = con.execute(f"""
                     SELECT EFLEVEL, EFTOTAL, EFMEN, EFWOM, EFFT, EFFTMEN, EFFTWOM, EFPT, EFPTMEN, EFPTWOM
-                    FROM EF2024 WHERE UNITID={uid}
+                    FROM EF{yr} WHERE UNITID={uid}
                     ORDER BY EFLEVEL
                 """).df()
                 if not ef.empty:
@@ -2859,48 +2862,48 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                         melt["Status"] = melt["Status"].map({"EFFT":"Full-time","EFPT":"Part-time"})
                         fig = px.bar(melt, x="Level", y="Count", color="Status", barmode="group",
                                      color_discrete_sequence=["#1f77b4","#aec7e8"],
-                                     title="Full-time vs Part-time by Level (Fall 2024)")
+                                     title=f"Full-time vs Part-time by Level (Fall {yr})")
                         fig.update_layout(height=320)
                         st.plotly_chart(fig, use_container_width=True)
                 else:
                     st.info("Fall enrollment by level not available.")
             except Exception as ex:
-                st.info(f"EF2024 not available. ({ex})")
+                st.info(f"EF{yr} not available. ({ex})")
 
-            # EF2024D — full retention cohort detail
-            st.subheader("Retention Rate Cohort Detail (EF2024D)")
+            # EF{yr}D — full retention cohort detail
+            st.subheader(f"Retention Rate Cohort Detail (EF{yr}D)")
             c1, c2 = st.columns(2)
             with c1:
-                st.markdown("**Full-time Cohort (Fall 2023 → Fall 2024)**")
+                st.markdown(f"**Full-time Cohort (Fall {yr_prev} → Fall {yr})**")
                 ft_items = {
-                    "Original FT cohort":     row.get("RRFTCT"),
-                    "Adjusted FT cohort":     row.get("RRFTCTA"),
-                    "Still enrolled fall 2024": row.get("RET_NMF"),
-                    "FT retention rate":      fmt(row.get("RET_PCF"), "pct"),
+                    "Original FT cohort":         row.get("RRFTCT"),
+                    "Adjusted FT cohort":         row.get("RRFTCTA"),
+                    f"Still enrolled fall {yr}":  row.get("RET_NMF"),
+                    "FT retention rate":          fmt(row.get("RET_PCF"), "pct"),
                 }
                 for lbl, val in ft_items.items():
                     display = val if isinstance(val, str) else fmt(val, "int")
                     st.write(f"**{lbl}:** {display}")
             with c2:
-                st.markdown("**Part-time Cohort (Fall 2023 → Fall 2024)**")
+                st.markdown(f"**Part-time Cohort (Fall {yr_prev} → Fall {yr})**")
                 pt_items = {
-                    "Original PT cohort":     row.get("RRPTCT"),
-                    "Adjusted PT cohort":     row.get("RRPTCTA"),
-                    "Still enrolled fall 2024": row.get("RET_NMP"),
-                    "PT retention rate":      fmt(row.get("RET_PCP"), "pct"),
+                    "Original PT cohort":         row.get("RRPTCT"),
+                    "Adjusted PT cohort":         row.get("RRPTCTA"),
+                    f"Still enrolled fall {yr}":  row.get("RET_NMP"),
+                    "PT retention rate":          fmt(row.get("RET_PCP"), "pct"),
                 }
                 for lbl, val in pt_items.items():
                     display = val if isinstance(val, str) else fmt(val, "int")
                     st.write(f"**{lbl}:** {display}")
 
             mc1, mc2, mc3 = st.columns(3)
-            mc1.metric("GRS Cohort Size",           fmt(row.get("GRCOHRT"),   "int"))
-            mc2.metric("Total Entering UG (fall 2024)", fmt(row.get("UGENTERN"), "int"))
+            mc1.metric("GRS Cohort Size",                fmt(row.get("GRCOHRT"),   "int"))
+            mc2.metric(f"Total Entering UG (fall {yr})", fmt(row.get("UGENTERN"), "int"))
             mc3.metric("GRS Cohort as % of Entering",  fmt(row.get("PGRCOHRT"), "pct"))
 
         # ── Tab 2: Admissions ─────────────────────────────────────────────────
         with tabs[2]:
-            adm = con.execute(f"SELECT * FROM ADM2024 WHERE UNITID={uid}").df()
+            adm = con.execute(f"SELECT * FROM ADM{yr} WHERE UNITID={uid}").df()
             if adm.empty:
                 st.info("No admissions data available — this may be an open-admissions institution.")
             else:
@@ -2969,7 +2972,7 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                 }
                 ADMCON_VAL = {1: "Required", 2: "Recommended", 3: "Neither required nor recommended",
                                5: "Considered but not required", -1: "N/A", -2: "Not reported"}
-                st.subheader("Admission Consideration Factors (ADM2024)")
+                st.subheader(f"Admission Consideration Factors (ADM{yr})")
                 ac_rows = []
                 for col, lbl in ADMCON_LBL.items():
                     val = r2.get(col)
@@ -2979,7 +2982,7 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                     ac_df = pd.DataFrame(ac_rows)
                     st.dataframe(ac_df, use_container_width=True, hide_index=True)
 
-                # Gender-split applicants/admitted/enrolled (ADM2024)
+                # Gender-split applicants/admitted/enrolled (ADM{yr})
                 st.subheader("Applicants / Admitted / Enrolled by Gender")
                 gender_rows = [
                     ("Men",   r2.get("APPLCNM"),  r2.get("ADMSSNM"),  r2.get("ENRLM")),
@@ -2993,8 +2996,8 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                     gdf["Accept %"] = (gdf["Admitted"] / gdf["Applicants"] * 100).round(1)
                     st.dataframe(gdf, use_container_width=True, hide_index=True)
 
-                # DRVADM2024 gender-split derived rates
-                st.subheader("Acceptance & Yield Rates by Gender (DRVADM2024)")
+                # DRVADM{yr} gender-split derived rates
+                st.subheader(f"Acceptance & Yield Rates by Gender (DRVADM{yr})")
                 adm_derived = [
                     ("Accept Rate — Total",     fmt(row.get("DVADM01"), "pct")),
                     ("Accept Rate — Men",        fmt(row.get("DVADM02"), "pct")),
@@ -3014,15 +3017,15 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                 if not adm_df.empty:
                     st.dataframe(adm_df, use_container_width=True, hide_index=True)
 
-                # Admissions requirements from IC2024
+                # Admissions requirements from IC{yr}
                 try:
                     ic = con.execute(f"""
                         SELECT OPENADMP, DOCPP, DOCPPSP
-                        FROM IC2024 WHERE UNITID={uid}
+                        FROM IC{yr} WHERE UNITID={uid}
                     """).df()
                     if not ic.empty:
                         icr = ic.iloc[0]
-                        st.subheader("Admissions Details (IC2024)")
+                        st.subheader(f"Admissions Details (IC{yr})")
                         st.write(f"Open admission: **{'Yes' if icr.get('OPENADMP')==1 else 'No'}**")
                         st.write(f"Offers Doctor's of Pharmacy: **{'Yes' if icr.get('DOCPP')==1 else 'No'}**")
                 except Exception:
@@ -3164,7 +3167,7 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
 
         # ── Tab 4: Student Outcomes ───────────────────────────────────────────
         with tabs[4]:
-            st.subheader("Outcome Measures — Cohort entering 2016-17 (DRVOM2024)")
+            st.subheader(f"Outcome Measures — Cohort entering 2016-17 (DRVOM{yr})")
             st.caption("Rates show % who received an award within 4, 6, or 8 years after entry. OM1=FT first-time; OM2=PT first-time; OM3=FT non-first-time; OM4=PT non-first-time.")
 
             # Award rate timeline: all four cohorts
@@ -3201,7 +3204,7 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
             st.dataframe(pd.DataFrame(om_rows), use_container_width=True, hide_index=True)
 
             # Pell vs Non-Pell: FT first-time
-            st.subheader("Pell vs Non-Pell Award Rates — FT First-time (DRVOM2024)")
+            st.subheader(f"Pell vs Non-Pell Award Rates — FT First-time (DRVOM{yr})")
             pell_rows = []
             for yr in ["4","6","8"]:
                 pell_rows.append({
@@ -3232,13 +3235,13 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
             st.divider()
 
             # Graduation rates by Pell/SSL status
-            st.subheader("Graduation Rates: Pell / Subsidized Loan / Neither (GR2024_PELL_SSL)")
+            st.subheader(f"Graduation Rates: Pell / Subsidized Loan / Neither (GR{yr}_PELL_SSL)")
             try:
                 gr_pell = con.execute(f"""
                     SELECT PSGRTYPE, PGADJCT, PGCMTOT,
                            SSADJCT, SSCMTOT, NRADJCT, NRCMTOT,
                            TTADJCT, TTCMTOT
-                    FROM GR2024_PELL_SSL WHERE UNITID={uid}
+                    FROM GR{yr}_PELL_SSL WHERE UNITID={uid}
                 """).df()
                 if not gr_pell.empty:
                     for _, gprow in gr_pell.iterrows():
@@ -3261,9 +3264,9 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                 st.info(f"Pell/SSL grad rate data not available. ({ex})")
 
             # 200% graduation rate
-            st.subheader("200% Graduation Rate (GR200_24)")
+            st.subheader(f"200% Graduation Rate (GR200_{yr2})")
             try:
-                gr200 = con.execute(f"SELECT * FROM GR200_24 WHERE UNITID={uid}").df()
+                gr200 = con.execute(f"SELECT * FROM GR200_{yr2} WHERE UNITID={uid}").df()
                 if not gr200.empty:
                     gr200r = gr200.iloc[0]
                     c1, c2, c3, c4 = st.columns(4)
@@ -3291,7 +3294,7 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                 st.info(f"200% grad rate not available. ({ex})")
 
             # Standard graduation rates summary
-            st.subheader("Standard Graduation Rates (DRVGR2024)")
+            st.subheader(f"Standard Graduation Rates (DRVGR{yr})")
             gr_summary = [
                 ("Overall 150% Rate",       row.get("GRRTTOT")),
                 ("Overall 150% — Men",      row.get("GRRTM")),
@@ -3315,13 +3318,13 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
             if not grdf.empty:
                 fig = px.bar(grdf, x="Metric", y="Rate (%)",
                              color_discrete_sequence=["#9467bd"],
-                             title="Graduation Rates (DRVGR2024)")
+                             title=f"Graduation Rates (DRVGR{yr})")
                 fig.update_layout(height=380, showlegend=False, yaxis_range=[0, 100],
                                   xaxis_tickangle=-30)
                 st.plotly_chart(fig, use_container_width=True)
 
             # Race/ethnicity graduation rates from DRVGR2024
-            st.subheader("Graduation Rates by Race/Ethnicity — 150% (DRVGR2024)")
+            st.subheader(f"Graduation Rates by Race/Ethnicity — 150% (DRVGR{yr})")
             gr_race = [
                 ("AI/AN",       row.get("GRRTAN")),
                 ("Asian/PI",    row.get("GRRTAP")),
@@ -3373,15 +3376,15 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                                           xaxis_range=[0, 100], yaxis_title="")
                         st.plotly_chart(fig, use_container_width=True)
 
-            # GR2024 — graduation rates by race/ethnicity (raw table)
-            st.subheader("Graduation Rate by Race/Ethnicity (GR2024, 150% of Normal Time)")
+            # GR{yr} — graduation rates by race/ethnicity (raw table)
+            st.subheader(f"Graduation Rate by Race/Ethnicity (GR{yr}, 150% of Normal Time)")
             try:
                 # GRTYPE=8: bachelor's adjusted cohort; GRTYPE=9: completers within 150%
                 gr_cohort = con.execute(f"""
                     SELECT GRTYPE, GRTOTLT, GRTOTLM, GRTOTLW,
                            GRWHITT, GRBKAAT, GRHISPT, GRASIAT,
                            GRAIANT, GR2MORT, GRUNKNT, GRNRALT
-                    FROM GR2024
+                    FROM GR{yr}
                     WHERE UNITID={uid} AND GRTYPE IN (2, 3, 8, 9)
                     ORDER BY GRTYPE
                 """).df()
@@ -3437,14 +3440,14 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                                      "GRTOTLM":"Men","GRTOTLW":"Women"}
                         ).reset_index(drop=True), use_container_width=True)
                 else:
-                    st.info("GR2024 race/ethnicity grad rate data not available.")
+                    st.info(f"GR{yr} race/ethnicity grad rate data not available.")
             except Exception as ex:
-                st.info(f"GR2024 not available. ({ex})")
+                st.info(f"GR{yr} not available. ({ex})")
 
-            # GR2024_L2 — graduation rates for less-than-2-year institutions
-            st.subheader("Graduation Rates — Less-than-2-Year Cohort (GR2024_L2)")
+            # GR{yr}_L2 — graduation rates for less-than-2-year institutions
+            st.subheader(f"Graduation Rates — Less-than-2-Year Cohort (GR{yr}_L2)")
             try:
-                gr_l2 = con.execute(f"SELECT * FROM GR2024_L2 WHERE UNITID={uid}").df()
+                gr_l2 = con.execute(f"SELECT * FROM GR{yr}_L2 WHERE UNITID={uid}").df()
                 if not gr_l2.empty:
                     lr = gr_l2.iloc[0]
                     c1, c2, c3, c4 = st.columns(4)
@@ -3460,11 +3463,11 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                 else:
                     st.info("Less-than-2-year graduation rate data not applicable for this institution.")
             except Exception as ex:
-                st.info(f"GR2024_L2 not available. ({ex})")
+                st.info(f"GR{yr}_L2 not available. ({ex})")
 
         # ── Tab 5: Costs ──────────────────────────────────────────────────────
         with tabs[5]:
-            st.subheader("Cost of Attendance (DRVCOST2024 & COST1_2024)")
+            st.subheader(f"Cost of Attendance (DRVCOST{yr} & COST1_{yr})")
             mc1, mc2, mc3, mc4 = st.columns(4)
             mc1.metric("In-State COA",      fmt(row.get("CINSON"),  "dollar"))
             mc2.metric("Out-of-State COA",  fmt(row.get("COTSON"),  "dollar"))
@@ -3472,7 +3475,7 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
             mc4.metric("Tuition 2024-25",   fmt(row.get("TUFEYR3"), "dollar"))
 
             try:
-                cost1 = con.execute(f"SELECT * FROM COST1_2024 WHERE UNITID={uid}").df()
+                cost1 = con.execute(f"SELECT * FROM COST1_{yr} WHERE UNITID={uid}").df()
                 if not cost1.empty:
                     cr = cost1.iloc[0]
 
@@ -3543,7 +3546,7 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                     c1.metric("Room Charge",  fmt(cr.get("ROOMAMT"),  "dollar"))
                     c2.metric("Board Charge", fmt(cr.get("BOARDAMT"), "dollar"))
                 else:
-                    st.info("Detailed cost data (COST1_2024) not available.")
+                    st.info(f"Detailed cost data (COST1_{yr}) not available.")
             except Exception as ex:
                 st.info(f"Cost detail not available. ({ex})")
 
@@ -3675,14 +3678,14 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
             except Exception as ex:
                 st.info(f"COST2 financial aid not available. ({ex})")
 
-            # Military / Veterans Benefits (SFAV2324)
-            st.subheader("Military Servicemembers & Veterans Benefits (SFAV2324)")
+            # Military / Veterans Benefits (SFAV{sfayr})
+            st.subheader(f"Military Servicemembers & Veterans Benefits (SFAV{sfayr})")
             try:
                 sfav = con.execute(f"""
                     SELECT PARTVT, PO9, DOD,
                            PO9_N, PO9_T, PO9_A,
                            DOD_N, DOD_T, DOD_A
-                    FROM SFAV2324 WHERE UNITID={uid}
+                    FROM SFAV{sfayr} WHERE UNITID={uid}
                 """).df()
                 if not sfav.empty:
                     sv = sfav.iloc[0]
@@ -3726,7 +3729,7 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                 all_fcols = list(rev_cols[prefix].keys()) + list(exp_cols.keys()) + \
                             [f"{prefix}CORREV", f"{prefix}COREXP", f"{prefix}ENDMFT"]
                 fin = con.execute(
-                    f"SELECT {','.join(all_fcols)} FROM DRVF2024 WHERE UNITID={uid}"
+                    f"SELECT {','.join(all_fcols)} FROM DRVF{yr} WHERE UNITID={uid}"
                 ).df()
 
                 if not fin.empty:
@@ -3802,16 +3805,16 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
             if not fte_df.empty:
                 fig = px.bar(fte_df, x="FTE", y="Occupational Category", orientation="h",
                              color_discrete_sequence=["#1f77b4"],
-                             title="FTE Staff by Occupational Category (DRVHR2024)")
+                             title=f"FTE Staff by Occupational Category (DRVHR{yr})")
                 fig.update_layout(height=420, yaxis_title="", showlegend=False)
                 st.plotly_chart(fig, use_container_width=True)
 
-            # EAP2024 — FT vs PT head counts
-            st.subheader("Staff Counts: Full-time vs Part-time (EAP2024)")
+            # EAP{yr} — FT vs PT head counts
+            st.subheader(f"Staff Counts: Full-time vs Part-time (EAP{yr})")
             try:
                 eap = con.execute(f"""
                     SELECT OCCUPCAT, EAPFT, EAPPT, EAPTOT
-                    FROM EAP2024
+                    FROM EAP{yr}
                     WHERE UNITID={uid} AND FACSTAT=0
                     ORDER BY EAPTOT DESC NULLS LAST
                 """).df()
@@ -3958,7 +3961,7 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                 st.info(f"New hire data not available. ({ex})")
 
             # Salary by academic rank
-            st.subheader("Average 9-month Salary by Academic Rank (DRVHR2024)")
+            st.subheader(f"Average 9-month Salary by Academic Rank (DRVHR{yr})")
             sal_items = [
                 ("All Ranks",       row.get("SALTOTL")),
                 ("Professor",       row.get("SALPROF")),
@@ -3986,13 +3989,13 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                 else:
                     st.info("This institution did not report instructional salary data for 2024-25.")
 
-            # SAL2024_IS — detailed salary outlays for FT instructional staff by rank
-            st.subheader("Salary Outlays — Full-time Instructional Staff by Rank (SAL2024_IS)")
+            # SAL{yr}_IS — detailed salary outlays for FT instructional staff by rank
+            st.subheader(f"Salary Outlays — Full-time Instructional Staff by Rank (SAL{yr}_IS)")
             try:
                 sal_is = con.execute(f"""
                     SELECT ARANK, SAINSTT AS TotalStaff, SA_9MCT AS On9moContract,
                            SAOUTLT AS SalaryOutlays, SAEQ9AT AS AvgSalary9mo
-                    FROM SAL2024_IS WHERE UNITID={uid}
+                    FROM SAL{yr}_IS WHERE UNITID={uid}
                     ORDER BY ARANK
                 """).df()
                 if not sal_is.empty:
@@ -4007,17 +4010,17 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                     if not chart_sal.empty:
                         fig = px.bar(chart_sal, x="Rank", y="AvgSalary9mo",
                                      color_discrete_sequence=["#ff7f0e"],
-                                     title="Average 9-month Salary by Rank (SAL2024_IS)")
+                                     title=f"Average 9-month Salary by Rank (SAL{yr}_IS)")
                         fig.update_layout(height=320, showlegend=False)
                         fig.update_yaxes(tickprefix="$", tickformat=",.0f")
                         st.plotly_chart(fig, use_container_width=True)
                 else:
                     st.info("Instructional salary outlay data not available.")
             except Exception as ex:
-                st.info(f"SAL2024_IS not available. ({ex})")
+                st.info(f"SAL{yr}_IS not available. ({ex})")
 
-            # SAL2024_NIS — salary outlays for FT non-instructional staff
-            st.subheader("Salary Outlays — Full-time Non-instructional Staff (SAL2024_NIS)")
+            # SAL{yr}_NIS — salary outlays for FT non-instructional staff
+            st.subheader(f"Salary Outlays — Full-time Non-instructional Staff (SAL{yr}_NIS)")
             NIS_CATS = [
                 ("All Non-instructional", "SANIN01","SANIT01"),
                 ("Research",              "SANIN02","SANIT02"),
@@ -4036,7 +4039,7 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
             ]
             try:
                 all_nis_cols = ",".join([f"{n},{t}" for _, n, t in NIS_CATS])
-                nis = con.execute(f"SELECT {all_nis_cols} FROM SAL2024_NIS WHERE UNITID={uid}").df()
+                nis = con.execute(f"SELECT {all_nis_cols} FROM SAL{yr}_NIS WHERE UNITID={uid}").df()
                 if not nis.empty:
                     nisr = nis.iloc[0]
                     nis_rows = []
@@ -4066,9 +4069,9 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                     else:
                         st.info("No non-instructional salary data for this institution.")
                 else:
-                    st.info("SAL2024_NIS data not available.")
+                    st.info(f"SAL{yr}_NIS data not available.")
             except Exception as ex:
-                st.info(f"SAL2024_NIS not available. ({ex})")
+                st.info(f"SAL{yr}_NIS not available. ({ex})")
 
             # S2024_OC — staff by race/ethnicity and gender (diversity)
             st.subheader("Staff Diversity by Race/Ethnicity (S2024_OC)")
@@ -4140,9 +4143,9 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
 
         # ── Tab 9: Library ────────────────────────────────────────────────────
         with tabs[9]:
-            st.subheader("Academic Library Data (AL2024 & DRVAL2024)")
+            st.subheader(f"Academic Library Data (AL{yr} & DRVAL{yr})")
             try:
-                al = con.execute(f"SELECT * FROM AL2024 WHERE UNITID={uid}").df()
+                al = con.execute(f"SELECT * FROM AL{yr} WHERE UNITID={uid}").df()
                 if not al.empty:
                     alr = al.iloc[0]
                     c1, c2, c3 = st.columns(3)
@@ -4201,10 +4204,10 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
             except Exception as ex:
                 st.info(f"Library data not available. ({ex})")
 
-            # DRVAL2024 — per-FTE derived metrics
-            st.subheader("Library Per-FTE Metrics (DRVAL2024)")
+            # DRVAL{yr} — per-FTE derived metrics
+            st.subheader(f"Library Per-FTE Metrics (DRVAL{yr})")
             try:
-                drval = con.execute(f"SELECT * FROM DRVAL2024 WHERE UNITID={uid}").df()
+                drval = con.execute(f"SELECT * FROM DRVAL{yr} WHERE UNITID={uid}").df()
                 if not drval.empty:
                     dvr = drval.iloc[0]
                     c1, c2, c3, c4 = st.columns(4)
@@ -4551,37 +4554,83 @@ def _albion_trends_tab(alb_current, peers_current, peer_label: str, cohort_group
         )
         cols[i % 2].plotly_chart(fig, use_container_width=True)
 
+    # ── Each peer institution ─────────────────────────────────────────────────
+    st.divider()
+    st.subheader(f"Each Peer Institution — {peer_label}")
+
+    unique_uids = peer_trend["UNITID"].dropna().unique().tolist()
+    n_peers = len(unique_uids)
+
+    if n_peers == 0:
+        st.info("No peer institutions found for the selected group.")
+    elif n_peers > 100:
+        st.info(
+            f"{n_peers:,} institutions in this group — too many to show individually. "
+            "Select a specific cohort group (e.g. BS&BC 30, GLCA 12) to see per-institution breakdowns."
+        )
+    else:
+        st.caption(f"{n_peers} institutions — expand any to see its year-over-year metrics.")
+        # build sorted (name, uid) list
+        name_uid = []
+        for uid in unique_uids:
+            sub = peer_trend[peer_trend["UNITID"] == uid]
+            if sub.empty:
+                continue
+            name_uid.append((str(sub["INSTNM"].iloc[0]), uid))
+        name_uid.sort(key=lambda x: x[0])
+
+        for name, uid in name_uid:
+            inst_rows = peer_trend[peer_trend["UNITID"] == uid].sort_values("YEAR")
+            with st.expander(name, expanded=("Albion College" in name)):
+                _render_inst_pivot(inst_rows)
+
 
 # ── Page 5: Year-over-Year Trends ────────────────────────────────────────────
 def page_trends(cohort_groups: dict):
     st.title("Year-over-Year Trends — 2023-24 vs 2024-25")
     st.caption("Compares final 2023-24 IPEDS data with provisional 2024-25 data.")
 
-    t1, t2 = st.tabs(["National Trends", "Albion College Trends"])
+    trend_df = load_trends()
 
-    with t1:
-        _page_overview_trends(cohort_groups)
+    BUILTIN_T = {
+        "All Private Non-Profit (national)": "builtin_np",
+        "Small Private NP — under 5,000 students": "builtin_size",
+    }
 
-    with t2:
-        # ── Peer group selector (self-contained) ──────────────────────────────
-        BUILTIN_T = {
-            "All Private Non-Profit (national)": "builtin_np",
-            "Small Private NP — under 5,000 students": "builtin_size",
-        }
+    # ── Both selectors above the tabs so widget state is always reliable ───────
+    fc1, fc2 = st.columns(2)
+    with fc1:
+        grp_options = ["All institutions"] + sorted(cohort_groups.keys())
+        sel_grp = st.selectbox("Filter by cohort group", grp_options, key="yoy_grp_sel")
+    with fc2:
         cohort_options_t = list(BUILTIN_T.keys()) + sorted(cohort_groups.keys())
         sel_t = st.selectbox("Compare Albion against", cohort_options_t,
                              key="trends_albion_peer_sel")
-        trend_df = load_trends()
-        if BUILTIN_T.get(sel_t) == "builtin_np":
-            peer_trend_t = trend_df[trend_df["CONTROL"] == 2]
-        elif BUILTIN_T.get(sel_t) == "builtin_size":
-            peer_trend_t = trend_df[(trend_df["CONTROL"] == 2) & (trend_df["INSTSIZE"].isin([1, 2]))]
-        else:
-            uid_list_t = cohort_groups.get(sel_t, [])
-            peer_trend_t = trend_df[trend_df["UNITID"].isin(uid_list_t)]
-        peer_trend_t = peer_trend_t[~peer_trend_t["INSTNM"].str.contains("Albion College", case=False, na=False)]
+
+    # compute lookup_df (National Trends tab filter)
+    if sel_grp != "All institutions":
+        uid_set = set(cohort_groups[sel_grp])
+        lookup_df = trend_df[trend_df["UNITID"].isin(uid_set)]
+    else:
+        lookup_df = trend_df
+
+    # compute peer_trend (Albion Trends tab comparison group)
+    if BUILTIN_T.get(sel_t) == "builtin_np":
+        peer_trend = trend_df[trend_df["CONTROL"] == 2]
+    elif BUILTIN_T.get(sel_t) == "builtin_size":
+        peer_trend = trend_df[(trend_df["CONTROL"] == 2) & (trend_df["INSTSIZE"].isin([1, 2]))]
+    else:
+        peer_trend = trend_df[trend_df["UNITID"].isin(cohort_groups.get(sel_t, []))]
+    peer_trend = peer_trend[~peer_trend["INSTNM"].str.contains("Albion College", case=False, na=False)]
+
+    t1, t2 = st.tabs(["National Trends", "Albion College Trends"])
+
+    with t1:
+        _page_overview_trends(trend_df, lookup_df, sel_grp, cohort_groups)
+
+    with t2:
         _albion_trends_tab(None, None, sel_t, cohort_groups, sel_t,
-                           _peer_trend_override=peer_trend_t)
+                           _peer_trend_override=peer_trend)
 
 
 def page_albion(df: pd.DataFrame, cohort_groups: dict, year: str = "2024-25"):
@@ -4595,7 +4644,7 @@ def page_albion(df: pd.DataFrame, cohort_groups: dict, year: str = "2024-25"):
 
     alb_all = df[df["INSTNM"].str.contains("Albion College", case=False, na=False)]
     if alb_all.empty:
-        st.error("Albion College not found in the dataset. Ensure the database includes HD2024.")
+        st.error(f"Albion College not found in the dataset. Ensure the database includes HD{year[:4]}.")
         return
     alb = alb_all.iloc[0]
 
