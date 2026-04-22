@@ -2087,7 +2087,7 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                     for lbl, key in [("Chief Officer", "CHFNM"), ("Title", "CHFTITLE"),
                                      ("Phone", "GENTELE"), ("ZIP", "ZIP"), ("OPEID", "OPEID")]:
                         val = row.get(key, "")
-                        if val and not pd.isna(val):
+                        if pd.notna(val) and val:
                             st.write(f"**{lbl}:** {val}")
                 with cc2:
                     st.markdown("**URLs**")
