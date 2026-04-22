@@ -2062,8 +2062,20 @@ def _page_overview_trends(cohort_groups: dict | None = None):
 
     # ── Cohort change summary table (when a group is selected) ────────────────
     if sel_grp != "All institutions" and not lookup_df.empty:
-        st.caption("Year-over-year change for every institution in the selected cohort. "
-                   "Green = improved, red = declined.")
+        st.caption("Both years and change (Δ) for every institution in the selected cohort. "
+                   "Click any column header to sort. Green Δ = improved, red Δ = declined.")
+
+        METRIC_SHORT = {
+            "Grad Rate 150% (%)":     "GR150%",
+            "FT Retention Rate (%)":  "Retention",
+            "Acceptance Rate (%)":    "Accept%",
+            "% Receiving Pell":       "Pell%",
+            "In-State COA ($)":       "COA",
+            "Avg Faculty Salary ($)": "FacSalary",
+            "FT Enrollment":          "Enrollment",
+            "8-yr Award Rate (%)":    "Award8yr",
+            "Student:Faculty Ratio":  "SFRatio",
+        }
 
         def _delta_color(v):
             if pd.isna(v):
@@ -2084,12 +2096,13 @@ def _page_overview_trends(cohort_groups: dict | None = None):
                 continue
             ref = r24.iloc[0] if not r24.empty else r23.iloc[0]
             row = {"State": ref.get("STABBR", "")}
-            for label, (col, higher_better) in TREND_METRICS.items():
+            for label, (col, _) in TREND_METRICS.items():
+                short = METRIC_SHORT.get(label, label)
                 v24 = float(r24.iloc[0][col]) if not r24.empty and pd.notna(r24.iloc[0].get(col)) else None
                 v23 = float(r23.iloc[0][col]) if not r23.empty and pd.notna(r23.iloc[0].get(col)) else None
-                short = label.replace(" (%)", "").replace(" ($)", "").replace("Avg ", "").replace("Student:", "Stu:")
-                row[f"{short} (25)"] = v24
-                row[f"{short} Δ"] = (v24 - v23) if v24 is not None and v23 is not None else None
+                row[f"{short} 23-24"] = v23
+                row[f"{short} 24-25"] = v24
+                row[f"{short} Δ"]     = (v24 - v23) if v24 is not None and v23 is not None else None
             summary_rows.append((ref.get("INSTNM", str(uid)), row))
 
         if summary_rows:
@@ -2099,16 +2112,19 @@ def _page_overview_trends(cohort_groups: dict | None = None):
             )
             sum_df.index.name = "Institution"
             delta_cols = [c for c in sum_df.columns if c.endswith(" Δ")]
-            val_cols   = [c for c in sum_df.columns if c.endswith(" (25)")]
-            fmt = {c: (lambda v: f"{v:+.1f}" if pd.notna(v) else "—") for c in delta_cols}
-            fmt.update({c: (lambda v: f"{v:,.1f}" if pd.notna(v) else "—") for c in val_cols})
+            val_cols   = [c for c in sum_df.columns if c.endswith(" 23-24") or c.endswith(" 24-25")]
+            fmt = {}
+            for c in delta_cols:
+                fmt[c] = lambda v: f"{v:+,.1f}" if pd.notna(v) else "—"
+            for c in val_cols:
+                fmt[c] = lambda v: f"{v:,.1f}" if pd.notna(v) else "—"
             fmt["State"] = lambda v: str(v) if pd.notna(v) else "—"
             st.dataframe(
                 sum_df.style
                       .apply(_highlight_albion, axis=1)
                       .map(_delta_color, subset=delta_cols)
                       .format(fmt),
-                use_container_width=True, height=480,
+                use_container_width=True, height=520,
             )
         st.divider()
 
