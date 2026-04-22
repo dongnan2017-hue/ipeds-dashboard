@@ -2128,34 +2128,44 @@ def _page_overview_trends(cohort_groups: dict | None = None):
             st.dataframe(styled, use_container_width=True, height=tbl_height)
         st.divider()
 
-    # ── Single-institution detail ──────────────────────────────────────────────
-    st.caption("Pick one institution for a full metric breakdown across both years.")
-    inst_names = sorted(lookup_df["INSTNM"].dropna().unique())
-    sel_inst = st.selectbox("Institution", ["— select —"] + inst_names, key="trend_inst_sel")
-    if sel_inst and sel_inst != "— select —":
-        inst_df = trend_df[trend_df["INSTNM"] == sel_inst].sort_values("YEAR")
+    # ── Per-institution detail ────────────────────────────────────────────────
+    def _render_inst_pivot(inst_name: str):
+        inst_df = trend_df[trend_df["INSTNM"] == inst_name].sort_values("YEAR")
         rows_out = []
         for label, (col, _) in TREND_METRICS.items():
             row = {"Metric": label}
             for _, r in inst_df.iterrows():
                 row[r["YEAR"]] = r.get(col)
             rows_out.append(row)
-        inst_pivot = pd.DataFrame(rows_out).set_index("Metric")
-        if "2023-24" in inst_pivot.columns and "2024-25" in inst_pivot.columns:
-            inst_pivot["Δ"] = inst_pivot["2024-25"] - inst_pivot["2023-24"]
-
-        def _color_delta_cell(v):
-            if pd.isna(v):
-                return ""
+        piv = pd.DataFrame(rows_out).set_index("Metric")
+        if "2023-24" in piv.columns and "2024-25" in piv.columns:
+            piv["Δ"] = piv["2024-25"] - piv["2023-24"]
+        def _cd(v):
+            if pd.isna(v): return ""
             return "color:#059669;font-weight:bold" if v > 0 else (
                    "color:#DC2626;font-weight:bold" if v < 0 else "")
-
         st.dataframe(
-            inst_pivot.style
-                      .map(_color_delta_cell, subset=["Δ"] if "Δ" in inst_pivot.columns else [])
-                      .format(lambda v: f"{v:,.1f}" if pd.notna(v) else "—"),
+            piv.style
+               .map(_cd, subset=["Δ"] if "Δ" in piv.columns else [])
+               .format(lambda v: f"{v:,.1f}" if pd.notna(v) else "—"),
             use_container_width=True,
         )
+
+    st.subheader("Individual Institution Breakdown")
+    if sel_grp != "All institutions":
+        # Show every institution in the cohort as a collapsible section
+        inst_names = sorted(lookup_df["INSTNM"].dropna().unique())
+        for name in inst_names:
+            is_albion = "Albion College" in name
+            with st.expander(name, expanded=is_albion):
+                _render_inst_pivot(name)
+    else:
+        # All institutions: use a dropdown to pick one
+        inst_names = sorted(lookup_df["INSTNM"].dropna().unique())
+        sel_inst = st.selectbox("Search for an institution", ["— select —"] + inst_names,
+                                key="trend_inst_sel")
+        if sel_inst and sel_inst != "— select —":
+            _render_inst_pivot(sel_inst)
 
 
 # ── Page 2: Institution Profile ──────────────────────────────────────────────
