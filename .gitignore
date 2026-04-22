@@ -1,0 +1,16 @@
+
+# Database (large — hosted on Google Drive instead)
+ipeds.duckdb
+
+# Streamlit secrets (contains Google Drive file ID)
+.streamlit/secrets.toml
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# OS
+.DS_Store
+Thumbs.db
