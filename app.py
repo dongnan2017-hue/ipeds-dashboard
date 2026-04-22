@@ -1996,186 +1996,6 @@ def _scatter_explorer(df: pd.DataFrame):
                                     x_var, y_var, z_var, chart_idx)
 
 
-def _page_overview_trends(
-    trend_df: "pd.DataFrame",
-    lookup_df: "pd.DataFrame",
-    sel_grp: str,
-    cohort_groups: dict,
-):
-    """National year-over-year trends section."""
-    st.subheader("National Trends — 2023-24 vs 2024-25")
-
-    # ── National median comparison table ──────────────────────────────────────
-    rows = []
-    for label, (col, _) in TREND_METRICS.items():
-        for yr in ["2023-24", "2024-25"]:
-            sub = trend_df[(trend_df["YEAR"] == yr) & trend_df[col].notna()]
-            rows.append({"Metric": label, "Year": yr, "Median": sub[col].median()})
-    med_df = pd.DataFrame(rows)
-
-    pivot = med_df.pivot(index="Metric", columns="Year", values="Median")
-    if "2023-24" in pivot.columns and "2024-25" in pivot.columns:
-        pivot["Change"] = pivot["2024-25"] - pivot["2023-24"]
-        pivot["Change %"] = (pivot["Change"] / pivot["2023-24"].abs() * 100).round(1)
-
-    def _color_change(v):
-        if pd.isna(v):
-            return ""
-        return "color: #059669; font-weight:bold" if v > 0 else ("color: #DC2626; font-weight:bold" if v < 0 else "")
-
-    st.caption("National medians across all active institutions reporting each metric.")
-    st.dataframe(
-        pivot.style.format({
-            "2023-24":  lambda v: f"{v:,.1f}" if pd.notna(v) else "—",
-            "2024-25":  lambda v: f"{v:,.1f}" if pd.notna(v) else "—",
-            "Change":   lambda v: f"{v:+,.1f}" if pd.notna(v) else "—",
-            "Change %": lambda v: f"{v:+.1f}%" if pd.notna(v) else "—",
-        }).map(_color_change, subset=["Change"]),
-        use_container_width=True,
-    )
-
-    # ── Side-by-side bar charts for key metrics ────────────────────────────────
-    st.divider()
-    c1, c2 = st.columns(2)
-    with c1:
-        gr_df = trend_df.dropna(subset=["GRRTTOT"]).groupby(["YEAR","CONTROL_LBL"])["GRRTTOT"].median().reset_index()
-        gr_df.columns = ["Year","Control","Median Grad Rate %"]
-        fig = px.bar(gr_df, x="Control", y="Median Grad Rate %", color="Year",
-                     barmode="group", title="Median Grad Rate 150% by Control",
-                     color_discrete_sequence=["#60A5FA","#1D4ED8"])
-        fig.update_layout(height=360, legend_title="", xaxis_title="")
-        st.plotly_chart(fig, use_container_width=True)
-    with c2:
-        ret_df = trend_df.dropna(subset=["RET_PCF"]).groupby(["YEAR","CONTROL_LBL"])["RET_PCF"].median().reset_index()
-        ret_df.columns = ["Year","Control","Median Retention %"]
-        fig = px.bar(ret_df, x="Control", y="Median Retention %", color="Year",
-                     barmode="group", title="Median FT Retention Rate by Control",
-                     color_discrete_sequence=["#60A5FA","#1D4ED8"])
-        fig.update_layout(height=360, legend_title="", xaxis_title="")
-        st.plotly_chart(fig, use_container_width=True)
-
-    c1, c2 = st.columns(2)
-    with c1:
-        enr_df = trend_df.dropna(subset=["ENRTOT"]).groupby(["YEAR","CONTROL_LBL"])["ENRTOT"].sum().reset_index()
-        enr_df.columns = ["Year","Control","Total Enrollment"]
-        fig = px.bar(enr_df, x="Control", y="Total Enrollment", color="Year",
-                     barmode="group", title="Total Enrollment by Control",
-                     color_discrete_sequence=["#60A5FA","#1D4ED8"])
-        fig.update_layout(height=360, legend_title="", xaxis_title="")
-        st.plotly_chart(fig, use_container_width=True)
-    with c2:
-        coa_df = trend_df.dropna(subset=["CINSON"]).groupby(["YEAR","CONTROL_LBL"])["CINSON"].median().reset_index()
-        coa_df.columns = ["Year","Control","Median In-State COA ($)"]
-        fig = px.bar(coa_df, x="Control", y="Median In-State COA ($)", color="Year",
-                     barmode="group", title="Median In-State COA by Control",
-                     color_discrete_sequence=["#60A5FA","#1D4ED8"])
-        fig.update_layout(height=360, legend_title="", xaxis_title="")
-        st.plotly_chart(fig, use_container_width=True)
-
-    # ── Cohort summary table (only when a specific group is selected) ─────────
-    st.divider()
-    if sel_grp != "All institutions":
-        n_insts = lookup_df["UNITID"].nunique()
-        st.subheader(f"Cohort Comparison — {sel_grp}")
-        st.caption(f"**{n_insts}** institutions · both years side-by-side · "
-                   "green Δ = improved, red Δ = declined.")
-
-    if sel_grp != "All institutions" and not lookup_df.empty:
-        n_label = f"**{sel_grp}**" if sel_grp != "All institutions" else "all institutions"
-        st.caption(f"Both years and Δ for {n_label}. "
-                   "Click any column header to sort. Green Δ = improved, red Δ = declined.")
-
-        METRIC_SHORT = {
-            "Grad Rate 150% (%)":     "GR150%",
-            "FT Retention Rate (%)":  "Retention",
-            "Acceptance Rate (%)":    "Accept%",
-            "% Receiving Pell":       "Pell%",
-            "In-State COA ($)":       "COA",
-            "Avg Faculty Salary ($)": "FacSalary",
-            "FT Enrollment":          "Enrollment",
-            "8-yr Award Rate (%)":    "Award8yr",
-            "Student:Faculty Ratio":  "SFRatio",
-        }
-
-        def _delta_color(v):
-            if pd.isna(v):
-                return ""
-            return "color:#059669;font-weight:bold" if v > 0 else (
-                   "color:#DC2626;font-weight:bold" if v < 0 else "")
-
-        def _highlight_albion(r):
-            if "Albion College" in str(r.name):
-                return ["background-color:#FDE68A;color:#78350F;font-weight:bold"] * len(r)
-            return [""] * len(r)
-
-        summary_rows = []
-        for uid in sorted(lookup_df["UNITID"].unique()):
-            r24 = lookup_df[(lookup_df["UNITID"] == uid) & (lookup_df["YEAR"] == "2024-25")]
-            r23 = lookup_df[(lookup_df["UNITID"] == uid) & (lookup_df["YEAR"] == "2023-24")]
-            if r24.empty and r23.empty:
-                continue
-            ref = r24.iloc[0] if not r24.empty else r23.iloc[0]
-            row = {"State": ref.get("STABBR", "")}
-            for label, (col, _) in TREND_METRICS.items():
-                short = METRIC_SHORT.get(label, label)
-                v24 = float(r24.iloc[0][col]) if not r24.empty and pd.notna(r24.iloc[0].get(col)) else None
-                v23 = float(r23.iloc[0][col]) if not r23.empty and pd.notna(r23.iloc[0].get(col)) else None
-                row[f"{short} 23-24"] = v23
-                row[f"{short} 24-25"] = v24
-                row[f"{short} Δ"]     = (v24 - v23) if v24 is not None and v23 is not None else None
-            summary_rows.append((ref.get("INSTNM", str(uid)), row))
-
-        if summary_rows:
-            sum_df = pd.DataFrame(
-                [r for _, r in summary_rows],
-                index=[name for name, _ in summary_rows],
-            )
-            sum_df.index.name = "Institution"
-            delta_cols = [c for c in sum_df.columns if c.endswith(" Δ")]
-            val_cols   = [c for c in sum_df.columns if c.endswith(" 23-24") or c.endswith(" 24-25")]
-            fmt = {}
-            for c in delta_cols:
-                fmt[c] = lambda v: f"{v:+,.1f}" if pd.notna(v) else "—"
-            for c in val_cols:
-                fmt[c] = lambda v: f"{v:,.1f}" if pd.notna(v) else "—"
-            fmt["State"] = lambda v: str(v) if pd.notna(v) else "—"
-            # Skip row-level styling for large result sets (>200 rows) to keep rendering fast
-            styled = sum_df.style.map(_delta_color, subset=delta_cols).format(fmt)
-            if len(sum_df) <= 200:
-                styled = styled.apply(_highlight_albion, axis=1)
-            tbl_height = min(520 + max(0, len(sum_df) - 20) * 4, 800)
-            st.dataframe(styled, use_container_width=True, height=tbl_height)
-        st.divider()
-
-    # ── Per-institution expanders (cohort) ───────────────────────────────────
-    if sel_grp != "All institutions" and not lookup_df.empty:
-        st.divider()
-        st.subheader(f"Each Institution — {sel_grp}")
-        st.caption("Expand any institution to see its 2023-24 vs 2024-25 metrics.")
-        # Build sorted (name, uid) list from the already-filtered lookup_df
-        uid_name = (
-            lookup_df[["UNITID", "INSTNM"]]
-            .drop_duplicates("UNITID")
-            .sort_values("INSTNM")
-        )
-        for _, irow in uid_name.iterrows():
-            uid  = irow["UNITID"]
-            name = str(irow["INSTNM"])
-            inst_rows = lookup_df[lookup_df["UNITID"] == uid].sort_values("YEAR")
-            with st.expander(name, expanded=("Albion College" in name)):
-                _render_inst_pivot(inst_rows)
-
-    # ── Search: always available, searches all institutions ───────────────────
-    st.divider()
-    st.subheader("Institution Lookup")
-    st.caption("Search any institution to see its 2023-24 vs 2024-25 metrics.")
-    all_inst_names = sorted(trend_df["INSTNM"].dropna().unique())
-    sel_inst = st.selectbox("Search institution", ["— select —"] + all_inst_names,
-                            key="trend_inst_sel")
-    if sel_inst and sel_inst != "— select —":
-        _render_inst_pivot(trend_df[trend_df["INSTNM"] == sel_inst].sort_values("YEAR"))
-
-
 # ── Page 2: Institution Profile ──────────────────────────────────────────────
 def page_profile(df: pd.DataFrame, year: str = "2024-25"):
     h_col, y_col = st.columns([7, 3])
@@ -4445,9 +4265,8 @@ def page_compare(df: pd.DataFrame, cohort_groups: dict, year: str = "2024-25"):
 
 
 # ── Page 4: Albion College Analysis ─────────────────────────────────────────
-def _albion_trends_tab(alb_current, peers_current, peer_label: str, cohort_groups: dict, sel: str,
-                       _peer_trend_override=None, _is_single_school=False):
-    """Year-over-year Albion trends. _peer_trend_override lets page_trends inject pre-built peer data."""
+def _albion_trends_tab(alb_current, peers_current, peer_label: str, cohort_groups: dict, sel: str):
+    """Standalone Albion trends tab called from page_albion (not page_trends)."""
     st.subheader(f"Albion College — Year-over-Year vs. {peer_label}")
     st.caption("Compares 2023-24 (Final) and 2024-25 (Provisional) IPEDS data.")
 
@@ -4458,24 +4277,18 @@ def _albion_trends_tab(alb_current, peers_current, peer_label: str, cohort_group
         st.warning("Albion College trend data not found in METRICS_LONG.")
         return
 
-    if _peer_trend_override is not None:
-        peer_trend = _peer_trend_override
+    BUILTIN_AT = {
+        "All Private Non-Profit (national)": "builtin_np",
+        "Small Private NP — under 5,000 students": "builtin_size",
+    }
+    if sel in BUILTIN_AT:
+        peer_trend = (trend_df[trend_df["CONTROL"] == 2] if BUILTIN_AT[sel] == "builtin_np"
+                      else trend_df[(trend_df["CONTROL"] == 2) & (trend_df["INSTSIZE"].isin([1, 2]))])
     else:
-        BUILTIN = {
-            "All Private Non-Profit (national)": "builtin_np",
-            "Small Private NP — under 5,000 students": "builtin_size",
-        }
-        if sel in BUILTIN:
-            if BUILTIN[sel] == "builtin_np":
-                peer_trend = trend_df[trend_df["CONTROL"] == 2]
-            else:
-                peer_trend = trend_df[(trend_df["CONTROL"] == 2) & (trend_df["INSTSIZE"].isin([1, 2]))]
-        else:
-            uid_list = cohort_groups.get(sel, [])
-            peer_trend = trend_df[trend_df["UNITID"].isin(uid_list)]
-        peer_trend = peer_trend[~peer_trend["INSTNM"].str.contains("Albion College", case=False, na=False)]
+        peer_trend = trend_df[trend_df["UNITID"].isin(cohort_groups.get(sel, []))]
+    peer_trend = peer_trend[~peer_trend["INSTNM"].str.contains("Albion College", case=False, na=False)]
 
-    METRICS = [
+    _AT_METRICS = [
         ("Grad Rate 150% (%)",    "GRRTTOT",      True,  "{:.1f}%"),
         ("FT Retention Rate (%)", "RET_PCF",       True,  "{:.1f}%"),
         ("Acceptance Rate (%)",   "DVADM01",       False, "{:.1f}%"),
@@ -4487,106 +4300,54 @@ def _albion_trends_tab(alb_current, peers_current, peer_label: str, cohort_group
         ("Student:Faculty Ratio", "STUFACR",       False, "{:.1f}"),
     ]
 
-    peer_col = peer_label if _is_single_school else "Peers"
-
-    # ── Change table ──────────────────────────────────────────────────────────
     tbl_rows = []
-    for label, col, higher_better, fmt_str in METRICS:
-        row = {"Metric": label}
+    for lbl, col, _, fmt_str in _AT_METRICS:
+        row = {"Metric": lbl}
         for yr in ["2023-24", "2024-25"]:
-            alb_val = alb_trend[alb_trend["YEAR"] == yr][col].values
-            peer_sub = peer_trend[peer_trend["YEAR"] == yr][col].dropna()
-            alb_v = float(alb_val[0]) if len(alb_val) and pd.notna(alb_val[0]) else None
-            peer_med = float(peer_sub.median()) if not peer_sub.empty else None
-            row[f"Albion {yr}"] = fmt_str.format(alb_v) if alb_v is not None else "—"
-            row[f"{peer_col} {yr}"] = fmt_str.format(peer_med) if peer_med is not None else "—"
-        # Delta Albion
+            av = alb_trend[alb_trend["YEAR"] == yr][col].values
+            pv = peer_trend[peer_trend["YEAR"] == yr][col].dropna()
+            row[f"Albion {yr}"] = fmt_str.format(float(av[0])) if len(av) and pd.notna(av[0]) else "—"
+            row[f"Peers {yr}"]  = fmt_str.format(float(pv.median())) if not pv.empty else "—"
         try:
-            v_new = float(alb_trend[alb_trend["YEAR"] == "2024-25"][col].values[0])
-            v_old = float(alb_trend[alb_trend["YEAR"] == "2023-24"][col].values[0])
-            delta = v_new - v_old
-            row["Albion Δ"] = f"{delta:+.1f}"
+            row["Albion Δ"] = f"{float(alb_trend[alb_trend['YEAR']=='2024-25'][col].values[0]) - float(alb_trend[alb_trend['YEAR']=='2023-24'][col].values[0]):+.1f}"
         except Exception:
             row["Albion Δ"] = "—"
         tbl_rows.append(row)
+    st.dataframe(pd.DataFrame(tbl_rows).set_index("Metric"), use_container_width=True)
 
-    tbl = pd.DataFrame(tbl_rows).set_index("Metric")
-    st.dataframe(tbl, use_container_width=True)
-
-    # ── Line charts: Albion vs peer ───────────────────────────────────────────
     st.divider()
-    comparison_lbl = peer_label if _is_single_school else "Peer Median"
-    st.subheader(f"Trend Charts — Albion vs. {comparison_lbl}")
-    years = ["2023-24", "2024-25"]
-
-    chart_metrics = [m for m in METRICS if m[1] in ["GRRTTOT","RET_PCF","ENRTOT","CINSON","SALTOTL","PGRNT_P"]]
-    cols = st.columns(2)
-    for i, (label, col, _, fmt_str) in enumerate(chart_metrics):
-        alb_vals = [
-            alb_trend[alb_trend["YEAR"] == yr][col].values
-            for yr in years
-        ]
-        alb_pts = [float(v[0]) if len(v) and pd.notna(v[0]) else None for v in alb_vals]
-        peer_pts = [
-            float(peer_trend[peer_trend["YEAR"] == yr][col].dropna().median())
-            if not peer_trend[peer_trend["YEAR"] == yr][col].dropna().empty else None
-            for yr in years
-        ]
-
+    st.subheader(f"Trend Charts — Albion vs. Peer Median ({peer_label})")
+    _years = ["2023-24", "2024-25"]
+    _chart_m = [m for m in _AT_METRICS if m[1] in ["GRRTTOT","RET_PCF","ENRTOT","CINSON","SALTOTL","PGRNT_P"]]
+    _cols = st.columns(2)
+    for i, (lbl, col, _, fmt_str) in enumerate(_chart_m):
+        alb_pts = [float(v[0]) if len(v:=alb_trend[alb_trend["YEAR"]==yr][col].values) and pd.notna(v[0]) else None for yr in _years]
+        prs_pts = [float(s.median()) if not (s:=peer_trend[peer_trend["YEAR"]==yr][col].dropna()).empty else None for yr in _years]
         fig = go.Figure()
-        # Peer line
-        fig.add_trace(go.Scatter(
-            x=years, y=peer_pts, mode="lines+markers",
-            name=peer_label if _is_single_school else f"Peer Median ({peer_label})",
-            line=dict(color="#6B7280", width=2, dash="dash"),
-            marker=dict(size=8),
-        ))
-        # Albion line
-        fig.add_trace(go.Scatter(
-            x=years, y=alb_pts, mode="lines+markers+text",
-            name="Albion College",
-            line=dict(color="#F59E0B", width=3),
-            marker=dict(size=12, symbol="star", color="#F59E0B",
-                        line=dict(color="#92400E", width=2)),
-            text=[fmt_str.format(v) if v is not None else "" for v in alb_pts],
-            textposition="top center",
-        ))
-        fig.update_layout(
-            title=label, height=300, legend=dict(orientation="h", y=-0.25),
-            margin=dict(l=0, r=0, t=40, b=0),
-            yaxis_title=label,
-        )
-        cols[i % 2].plotly_chart(fig, use_container_width=True)
+        fig.add_trace(go.Scatter(x=_years, y=prs_pts, mode="lines+markers",
+            name=f"Peer Median ({peer_label})", line=dict(color="#6B7280", width=2, dash="dash"), marker=dict(size=8)))
+        fig.add_trace(go.Scatter(x=_years, y=alb_pts, mode="lines+markers+text",
+            name="Albion College", line=dict(color="#F59E0B", width=3),
+            marker=dict(size=12, symbol="star", color="#F59E0B", line=dict(color="#92400E", width=2)),
+            text=[fmt_str.format(v) if v is not None else "" for v in alb_pts], textposition="top center"))
+        fig.update_layout(title=lbl, height=300, legend=dict(orientation="h", y=-0.25),
+                          margin=dict(l=0, r=0, t=40, b=0), yaxis_title=lbl)
+        _cols[i % 2].plotly_chart(fig, use_container_width=True)
 
-    # ── Each peer institution ─────────────────────────────────────────────────
     st.divider()
     st.subheader(f"Each Peer Institution — {peer_label}")
-
-    unique_uids = peer_trend["UNITID"].dropna().unique().tolist()
-    n_peers = len(unique_uids)
-
-    if n_peers == 0:
-        st.info("No peer institutions found for the selected group.")
-    elif n_peers > 100:
-        st.info(
-            f"{n_peers:,} institutions in this group — too many to show individually. "
-            "Select a specific cohort group (e.g. BS&BC 30, GLCA 12) to see per-institution breakdowns."
-        )
+    _uids = peer_trend["UNITID"].dropna().unique().tolist()
+    if len(_uids) == 0:
+        st.info("No peer institutions found.")
+    elif len(_uids) > 100:
+        st.info(f"{len(_uids):,} institutions — select a specific cohort group to see per-institution breakdowns.")
     else:
-        st.caption(f"{n_peers} institutions — expand any to see its year-over-year metrics.")
-        # build sorted (name, uid) list
-        name_uid = []
-        for uid in unique_uids:
-            sub = peer_trend[peer_trend["UNITID"] == uid]
-            if sub.empty:
-                continue
-            name_uid.append((str(sub["INSTNM"].iloc[0]), uid))
-        name_uid.sort(key=lambda x: x[0])
-
-        for name, uid in name_uid:
-            inst_rows = peer_trend[peer_trend["UNITID"] == uid].sort_values("YEAR")
+        st.caption(f"{len(_uids)} institutions — expand any to see its year-over-year metrics.")
+        _name_uid = sorted([(str(peer_trend[peer_trend["UNITID"]==u]["INSTNM"].iloc[0]), u)
+                            for u in _uids if not peer_trend[peer_trend["UNITID"]==u].empty])
+        for name, uid in _name_uid:
             with st.expander(name, expanded=("Albion College" in name)):
-                _render_inst_pivot(inst_rows)
+                _render_inst_pivot(peer_trend[peer_trend["UNITID"]==uid].sort_values("YEAR"))
 
 
 # ── Page 5: Year-over-Year Trends ────────────────────────────────────────────
@@ -4596,77 +4357,299 @@ def page_trends(cohort_groups: dict):
 
     trend_df = load_trends()
 
-    BUILTIN_T = {
+    YEARS = ["2023-24", "2024-25"]
+    METRICS = [
+        ("Grad Rate 150% (%)",    "GRRTTOT",      "{:.1f}%"),
+        ("FT Retention Rate (%)", "RET_PCF",       "{:.1f}%"),
+        ("Acceptance Rate (%)",   "DVADM01",       "{:.1f}%"),
+        ("% Receiving Pell",      "PGRNT_P",       "{:.1f}%"),
+        ("In-State COA ($)",      "CINSON",        "${:,.0f}"),
+        ("Avg Faculty Salary ($)","SALTOTL",        "${:,.0f}"),
+        ("Total Enrollment",      "ENRTOT",        "{:,.0f}"),
+        ("8-yr Award Rate (%)",   "OM1TOTLAWDP8",  "{:.1f}%"),
+        ("Student:Faculty Ratio", "STUFACR",       "{:.1f}"),
+    ]
+    SHORT = {
+        "Grad Rate 150% (%)":     "GR150%",
+        "FT Retention Rate (%)":  "Retention",
+        "Acceptance Rate (%)":    "Accept%",
+        "% Receiving Pell":       "Pell%",
+        "In-State COA ($)":       "COA",
+        "Avg Faculty Salary ($)": "FacSalary",
+        "Total Enrollment":       "Enrollment",
+        "8-yr Award Rate (%)":    "Award8yr",
+        "Student:Faculty Ratio":  "SFRatio",
+    }
+    BUILTIN = {
         "All Private Non-Profit (national)": "builtin_np",
         "Small Private NP — under 5,000 students": "builtin_size",
     }
 
-    # ── Row 1: two main selectors ─────────────────────────────────────────────
-    fc1, fc2 = st.columns(2)
-    with fc1:
-        grp_options = ["All institutions"] + sorted(cohort_groups.keys())
-        sel_grp = st.selectbox("Filter by cohort group", grp_options, key="yoy_grp_sel")
-    with fc2:
-        cohort_options_t = list(BUILTIN_T.keys()) + sorted(cohort_groups.keys())
-        sel_t = st.selectbox("Compare Albion against", cohort_options_t,
-                             key="trends_albion_peer_sel")
+    # ── All selectors ABOVE tabs ──────────────────────────────────────────────
+    sc1, sc2 = st.columns(2)
+    with sc1:
+        sel_grp = st.selectbox(
+            "Cohort group (National tab)",
+            ["All institutions"] + sorted(cohort_groups.keys()),
+            key="yt_grp",
+        )
+    with sc2:
+        sel_peer = st.selectbox(
+            "Compare Albion against",
+            list(BUILTIN.keys()) + sorted(cohort_groups.keys()),
+            key="yt_peer",
+        )
 
-    # ── Row 2: school selector — always visible ───────────────────────────────
-    # When a cohort group is active, show only that group's schools.
-    # When a built-in is active, show schools from all cohort groups.
-    if sel_t not in BUILTIN_T:
-        pool_uids = set(cohort_groups.get(sel_t, []))
-        school_lbl = f"Or compare 1-on-1 vs. one school from {sel_t}:"
+    # School selector — always visible
+    if sel_peer not in BUILTIN:
+        pool_uids = set(cohort_groups.get(sel_peer, []))
+        school_lbl = f"Compare Albion 1-on-1 vs. one school from {sel_peer}:"
     else:
         pool_uids = {uid for uids in cohort_groups.values() for uid in uids}
-        school_lbl = "Or compare 1-on-1 vs. one school (from any cohort):"
+        school_lbl = "Compare Albion 1-on-1 vs. one school from any cohort:"
 
     school_names = (
         trend_df[trend_df["UNITID"].isin(pool_uids)][["UNITID", "INSTNM"]]
-        .drop_duplicates("UNITID")
-        .dropna(subset=["INSTNM"])
-        .sort_values("INSTNM")["INSTNM"]
-        .tolist()
+        .drop_duplicates("UNITID").dropna(subset=["INSTNM"])
+        .sort_values("INSTNM")["INSTNM"].tolist()
     )
-    _sel_school = st.selectbox(
+    sel_school = st.selectbox(
         school_lbl,
-        ["— whole group (median) —"] + school_names,
-        key="trends_single_inst_sel",
+        ["— whole group median —"] + school_names,
+        key="yt_school",
     )
-    sel_inst_t = None if _sel_school == "— whole group (median) —" else _sel_school
+    use_single = sel_school != "— whole group median —"
 
-    # compute lookup_df (National Trends tab filter)
+    # ── Derived DataFrames ────────────────────────────────────────────────────
+    # National tab scope
     if sel_grp != "All institutions":
-        uid_set = set(cohort_groups[sel_grp])
-        lookup_df = trend_df[trend_df["UNITID"].isin(uid_set)]
+        lookup_df = trend_df[trend_df["UNITID"].isin(cohort_groups[sel_grp])]
     else:
         lookup_df = trend_df
 
-    # compute peer_trend and label (Albion Trends tab)
-    is_single = sel_inst_t is not None
-    if is_single:
-        peer_trend  = trend_df[trend_df["INSTNM"] == sel_inst_t]
-        peer_label_t = sel_inst_t
-    elif BUILTIN_T.get(sel_t) == "builtin_np":
-        peer_trend  = trend_df[trend_df["CONTROL"] == 2]
-        peer_label_t = sel_t
-    elif BUILTIN_T.get(sel_t) == "builtin_size":
-        peer_trend  = trend_df[(trend_df["CONTROL"] == 2) & (trend_df["INSTSIZE"].isin([1, 2]))]
-        peer_label_t = sel_t
+    # Albion tab: Albion rows
+    alb_df = trend_df[trend_df["INSTNM"].str.contains("Albion College", case=False, na=False)].sort_values("YEAR")
+
+    # Albion tab: peer rows
+    if use_single:
+        peer_df = trend_df[trend_df["INSTNM"] == sel_school]
+        peer_label = sel_school
+        peer_line_name = sel_school
+    elif BUILTIN.get(sel_peer) == "builtin_np":
+        peer_df = trend_df[trend_df["CONTROL"] == 2]
+        peer_label = sel_peer
+        peer_line_name = f"Peer Median"
+    elif BUILTIN.get(sel_peer) == "builtin_size":
+        peer_df = trend_df[(trend_df["CONTROL"] == 2) & (trend_df["INSTSIZE"].isin([1, 2]))]
+        peer_label = sel_peer
+        peer_line_name = f"Peer Median"
     else:
-        peer_trend  = trend_df[trend_df["UNITID"].isin(cohort_groups.get(sel_t, []))]
-        peer_label_t = sel_t
-    peer_trend = peer_trend[~peer_trend["INSTNM"].str.contains("Albion College", case=False, na=False)]
+        peer_df = trend_df[trend_df["UNITID"].isin(cohort_groups.get(sel_peer, []))]
+        peer_label = sel_peer
+        peer_line_name = f"Peer Median"
+    peer_df = peer_df[~peer_df["INSTNM"].str.contains("Albion College", case=False, na=False)]
 
-    t1, t2 = st.tabs(["National Trends", "Albion College Trends"])
+    # ── TABS ──────────────────────────────────────────────────────────────────
+    t1, t2 = st.tabs(["📊 National Trends", "🎓 Albion College Trends"])
 
+    # ════════════════════════════════════════════════════════════════════════
+    # TAB 1 — National Trends
+    # ════════════════════════════════════════════════════════════════════════
     with t1:
-        _page_overview_trends(trend_df, lookup_df, sel_grp, cohort_groups)
+        st.subheader("National Medians — 2023-24 vs 2024-25")
+        st.caption("All active institutions reporting each metric.")
 
+        med_rows = []
+        for lbl, col, _ in METRICS:
+            for yr in YEARS:
+                sub = trend_df[(trend_df["YEAR"] == yr) & trend_df[col].notna()]
+                med_rows.append({"Metric": lbl, "Year": yr, "Median": sub[col].median()})
+        med_piv = pd.DataFrame(med_rows).pivot(index="Metric", columns="Year", values="Median")
+        if all(y in med_piv.columns for y in YEARS):
+            med_piv["Change"] = med_piv["2024-25"] - med_piv["2023-24"]
+            med_piv["Chg %"]  = (med_piv["Change"] / med_piv["2023-24"].abs() * 100).round(1)
+
+        def _cc(v):
+            if pd.isna(v): return ""
+            return "color:#059669;font-weight:bold" if v > 0 else "color:#DC2626;font-weight:bold"
+
+        st.dataframe(
+            med_piv.style
+                .format({"2023-24": lambda v: f"{v:,.1f}" if pd.notna(v) else "—",
+                         "2024-25": lambda v: f"{v:,.1f}" if pd.notna(v) else "—",
+                         "Change":  lambda v: f"{v:+,.1f}" if pd.notna(v) else "—",
+                         "Chg %":   lambda v: f"{v:+.1f}%" if pd.notna(v) else "—"})
+                .map(_cc, subset=["Change"] if "Change" in med_piv.columns else []),
+            use_container_width=True,
+        )
+
+        # Bar charts
+        st.divider()
+        bc1, bc2 = st.columns(2)
+        for col_w, col_id, title in [
+            (bc1, "GRRTTOT", "Median Grad Rate 150% by Control"),
+            (bc2, "RET_PCF",  "Median FT Retention Rate by Control"),
+        ]:
+            df_b = (trend_df.dropna(subset=[col_id])
+                    .groupby(["YEAR","CONTROL_LBL"])[col_id].median().reset_index())
+            df_b.columns = ["Year","Control","Value"]
+            fig = px.bar(df_b, x="Control", y="Value", color="Year", barmode="group",
+                         title=title, color_discrete_sequence=["#60A5FA","#1D4ED8"])
+            fig.update_layout(height=340, legend_title="", xaxis_title="", yaxis_title="")
+            col_w.plotly_chart(fig, use_container_width=True)
+
+        bc3, bc4 = st.columns(2)
+        for col_w, col_id, title, agg in [
+            (bc3, "ENRTOT", "Total Enrollment by Control",      "sum"),
+            (bc4, "CINSON", "Median In-State COA by Control",   "median"),
+        ]:
+            df_b = (trend_df.dropna(subset=[col_id])
+                    .groupby(["YEAR","CONTROL_LBL"])[col_id]
+                    .agg(agg).reset_index())
+            df_b.columns = ["Year","Control","Value"]
+            fig = px.bar(df_b, x="Control", y="Value", color="Year", barmode="group",
+                         title=title, color_discrete_sequence=["#60A5FA","#1D4ED8"])
+            fig.update_layout(height=340, legend_title="", xaxis_title="", yaxis_title="")
+            col_w.plotly_chart(fig, use_container_width=True)
+
+        # Cohort comparison table
+        if sel_grp != "All institutions" and not lookup_df.empty:
+            st.divider()
+            n_inst = lookup_df["UNITID"].nunique()
+            st.subheader(f"Cohort Comparison — {sel_grp}")
+            st.caption(f"**{n_inst}** institutions · green Δ = improved · red Δ = declined · click header to sort")
+
+            def _dcolor(v):
+                if pd.isna(v): return ""
+                return "color:#059669;font-weight:bold" if v > 0 else "color:#DC2626;font-weight:bold"
+
+            def _alb_row(r):
+                if "Albion College" in str(r.name):
+                    return ["background-color:#FDE68A;color:#78350F;font-weight:bold"] * len(r)
+                return [""] * len(r)
+
+            sum_rows = []
+            for uid in sorted(lookup_df["UNITID"].unique()):
+                r24 = lookup_df[(lookup_df["UNITID"]==uid) & (lookup_df["YEAR"]=="2024-25")]
+                r23 = lookup_df[(lookup_df["UNITID"]==uid) & (lookup_df["YEAR"]=="2023-24")]
+                if r24.empty and r23.empty: continue
+                ref = r24.iloc[0] if not r24.empty else r23.iloc[0]
+                d = {"State": ref.get("STABBR", "")}
+                for lbl, col, _ in METRICS:
+                    sh = SHORT[lbl]
+                    v24 = float(r24.iloc[0][col]) if not r24.empty and pd.notna(r24.iloc[0].get(col)) else None
+                    v23 = float(r23.iloc[0][col]) if not r23.empty and pd.notna(r23.iloc[0].get(col)) else None
+                    d[f"{sh} 23-24"] = v23
+                    d[f"{sh} 24-25"] = v24
+                    d[f"{sh} Δ"]     = (v24 - v23) if v24 is not None and v23 is not None else None
+                sum_rows.append((ref.get("INSTNM", str(uid)), d))
+
+            if sum_rows:
+                sum_df = pd.DataFrame([r for _,r in sum_rows], index=[n for n,_ in sum_rows])
+                sum_df.index.name = "Institution"
+                dcols = [c for c in sum_df.columns if c.endswith(" Δ")]
+                vcols = [c for c in sum_df.columns if c.endswith(" 23-24") or c.endswith(" 24-25")]
+                fmt_d = ({c: (lambda v: f"{v:+,.1f}" if pd.notna(v) else "—") for c in dcols}
+                       | {c: (lambda v: f"{v:,.1f}"  if pd.notna(v) else "—") for c in vcols}
+                       | {"State": lambda v: str(v) if pd.notna(v) else "—"})
+                styled = sum_df.style.map(_dcolor, subset=dcols).format(fmt_d)
+                if len(sum_df) <= 200:
+                    styled = styled.apply(_alb_row, axis=1)
+                st.dataframe(styled, use_container_width=True,
+                             height=min(520 + max(0, len(sum_df)-20)*4, 800))
+
+            # Per-institution expanders
+            st.divider()
+            st.subheader(f"Each Institution — {sel_grp}")
+            st.caption("Expand any institution to see its 2023-24 vs 2024-25 metrics.")
+            uid_name = (lookup_df[["UNITID","INSTNM"]].drop_duplicates("UNITID").sort_values("INSTNM"))
+            for _, irow in uid_name.iterrows():
+                uid  = irow["UNITID"]
+                name = str(irow["INSTNM"])
+                with st.expander(name, expanded=("Albion College" in name)):
+                    _render_inst_pivot(lookup_df[lookup_df["UNITID"]==uid].sort_values("YEAR"))
+
+        # Institution search
+        st.divider()
+        st.subheader("Institution Lookup")
+        st.caption("Search any institution to see its 2023-24 vs 2024-25 metrics.")
+        all_names = sorted(trend_df["INSTNM"].dropna().unique())
+        sch = st.selectbox("Search institution", ["— select —"] + all_names, key="yt_inst_search")
+        if sch and sch != "— select —":
+            _render_inst_pivot(trend_df[trend_df["INSTNM"] == sch].sort_values("YEAR"))
+
+    # ════════════════════════════════════════════════════════════════════════
+    # TAB 2 — Albion College Trends
+    # ════════════════════════════════════════════════════════════════════════
     with t2:
-        _albion_trends_tab(None, None, peer_label_t, cohort_groups, sel_t,
-                           _peer_trend_override=peer_trend,
-                           _is_single_school=is_single)
+        if alb_df.empty:
+            st.warning("Albion College not found in METRICS_LONG.")
+            return
+
+        st.subheader(f"Albion College — 2023-24 vs 2024-25  vs.  {peer_label}")
+        st.caption(f"{'1-on-1 comparison' if use_single else 'Peer median comparison'} · "
+                   "2023-24 Final vs 2024-25 Provisional")
+
+        # Change table
+        tbl_rows = []
+        peer_col = peer_label if use_single else "Peers"
+        for lbl, col, fmt_str in METRICS:
+            row = {"Metric": lbl}
+            for yr in YEARS:
+                av = alb_df[alb_df["YEAR"]==yr][col].values
+                pv = peer_df[peer_df["YEAR"]==yr][col].dropna()
+                row[f"Albion {yr}"] = fmt_str.format(float(av[0])) if len(av) and pd.notna(av[0]) else "—"
+                row[f"{peer_col} {yr}"] = fmt_str.format(float(pv.median())) if not pv.empty else "—"
+            try:
+                row["Albion Δ"] = f"{float(alb_df[alb_df['YEAR']=='2024-25'][col].values[0]) - float(alb_df[alb_df['YEAR']=='2023-24'][col].values[0]):+.1f}"
+            except Exception:
+                row["Albion Δ"] = "—"
+            tbl_rows.append(row)
+        st.dataframe(pd.DataFrame(tbl_rows).set_index("Metric"), use_container_width=True)
+
+        # Line charts
+        st.divider()
+        st.subheader(f"Trend Charts — Albion vs. {peer_line_name}")
+        chart_m = [(l,c,f) for l,c,f in METRICS if c in ["GRRTTOT","RET_PCF","ENRTOT","CINSON","SALTOTL","PGRNT_P"]]
+        ccols = st.columns(2)
+        for i, (lbl, col, fmt_str) in enumerate(chart_m):
+            alb_pts = [float(v[0]) if len(v:=alb_df[alb_df["YEAR"]==yr][col].values) and pd.notna(v[0]) else None for yr in YEARS]
+            prs_pts = [float(s.median()) if not (s:=peer_df[peer_df["YEAR"]==yr][col].dropna()).empty else None for yr in YEARS]
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=YEARS, y=prs_pts, mode="lines+markers",
+                name=peer_line_name if use_single else f"{peer_line_name} ({peer_label})",
+                line=dict(color="#6B7280", width=2, dash="dash"), marker=dict(size=8),
+            ))
+            fig.add_trace(go.Scatter(
+                x=YEARS, y=alb_pts, mode="lines+markers+text",
+                name="Albion College",
+                line=dict(color="#F59E0B", width=3),
+                marker=dict(size=12, symbol="star", color="#F59E0B", line=dict(color="#92400E", width=2)),
+                text=[fmt_str.format(v) if v is not None else "" for v in alb_pts],
+                textposition="top center",
+            ))
+            fig.update_layout(title=lbl, height=300, legend=dict(orientation="h", y=-0.25),
+                              margin=dict(l=0, r=0, t=40, b=0), yaxis_title=lbl)
+            ccols[i % 2].plotly_chart(fig, use_container_width=True)
+
+        # Per-peer institution expanders
+        st.divider()
+        st.subheader(f"Each Peer Institution — {peer_label}")
+        peer_uids = peer_df["UNITID"].dropna().unique().tolist()
+        if len(peer_uids) == 0:
+            st.info("No peer institutions found.")
+        elif len(peer_uids) > 100:
+            st.info(f"{len(peer_uids):,} institutions — select a specific cohort group to see per-institution breakdowns.")
+        else:
+            st.caption(f"{len(peer_uids)} institutions — expand any to see its year-over-year metrics.")
+            sorted_peers = sorted(
+                [(str(peer_df[peer_df["UNITID"]==u]["INSTNM"].iloc[0]), u)
+                 for u in peer_uids if not peer_df[peer_df["UNITID"]==u].empty]
+            )
+            for name, uid in sorted_peers:
+                with st.expander(name, expanded=False):
+                    _render_inst_pivot(peer_df[peer_df["UNITID"]==uid].sort_values("YEAR"))
 
 
 def page_albion(df: pd.DataFrame, cohort_groups: dict, year: str = "2024-25"):
