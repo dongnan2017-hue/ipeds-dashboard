@@ -4385,31 +4385,25 @@ def page_trends(cohort_groups: dict):
         "Small Private NP — under 5,000 students": "builtin_size",
     }
 
-    # ── All selectors ABOVE tabs ──────────────────────────────────────────────
-    sc1, sc2 = st.columns(2)
-    with sc1:
-        sel_grp = st.selectbox(
-            "Cohort group (National tab)",
-            ["All institutions"] + sorted(cohort_groups.keys()),
-            key="yt_grp",
-        )
-    with sc2:
-        sel_peer_grp = st.selectbox(
-            "Compare Albion against (group)",
-            list(BUILTIN.keys()) + sorted(cohort_groups.keys()),
-            key="yt_peer",
-        )
+    # ── Single group selector drives both tabs ────────────────────────────────
+    sel_grp = st.selectbox(
+        "Select cohort / peer group",
+        list(BUILTIN.keys()) + sorted(cohort_groups.keys()),
+        index=list(BUILTIN.keys()).index("All Private Non-Profit (national)"),
+        key="yt_grp",
+        help="National tab: shows cohort comparison table. Albion tab: used as peer benchmark.",
+    )
+    sel_peer_grp = sel_grp  # same selection drives both tabs
 
-    # Build school list — only when a cohort group is selected (not built-ins)
-    _builtin_selected = sel_peer_grp in BUILTIN
+    # Build school list — only when a named cohort is selected (not built-ins)
+    _builtin_selected = sel_grp in BUILTIN
     if not _builtin_selected:
-        _pool = cohort_groups.get(sel_peer_grp, [])
+        _pool = cohort_groups.get(sel_grp, [])
         _school_rows = (
             trend_df[trend_df["UNITID"].isin(_pool)][["UNITID", "INSTNM"]]
             .drop_duplicates("UNITID").dropna(subset=["INSTNM"])
             .sort_values("INSTNM")
         )
-        # Exclude Albion College from peer picker
         _school_rows = _school_rows[
             ~_school_rows["INSTNM"].str.contains("Albion College", case=False, na=False)
         ]
@@ -4419,21 +4413,20 @@ def page_trends(cohort_groups: dict):
         _uid_by_name  = {}
         _school_names = []
 
-    # Full-width school selector — always visible, no column wrapper
-    if _builtin_selected:
-        st.info('Select a cohort group in "Compare Albion against" to enable 1-on-1 school comparison.')
-        sel_school = "— use group median —"
-    else:
+    # 1-on-1 school picker — only available when a cohort group is selected
+    if not _builtin_selected:
         sel_school = st.selectbox(
-            "Or compare Albion 1-on-1 vs. one school:",
+            "Or compare Albion 1-on-1 vs. one school from this cohort:",
             ["— use group median —"] + _school_names,
             key="yt_school",
         )
+    else:
+        sel_school = "— use group median —"
     use_single = sel_school != "— use group median —"
 
     # ── Derived DataFrames ────────────────────────────────────────────────────
-    # National tab scope
-    if sel_grp != "All institutions":
+    # National tab: show cohort table only when a named cohort is selected
+    if not _builtin_selected:
         lookup_df = trend_df[trend_df["UNITID"].isin(cohort_groups[sel_grp])]
     else:
         lookup_df = trend_df
@@ -4525,7 +4518,7 @@ def page_trends(cohort_groups: dict):
             col_w.plotly_chart(fig, use_container_width=True)
 
         # Cohort comparison table
-        if sel_grp != "All institutions" and not lookup_df.empty:
+        if not _builtin_selected and not lookup_df.empty:
             st.divider()
             n_inst = lookup_df["UNITID"].nunique()
             st.subheader(f"Cohort Comparison — {sel_grp}")
