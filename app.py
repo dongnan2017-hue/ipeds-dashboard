@@ -4421,7 +4421,7 @@ def page_trends(cohort_groups: dict):
 
     # Full-width school selector — always visible, no column wrapper
     if _builtin_selected:
-        st.info("Select a cohort group in "Compare Albion against" to enable 1-on-1 school comparison.")
+        st.info('Select a cohort group in "Compare Albion against" to enable 1-on-1 school comparison.')
         sel_school = "— use group median —"
     else:
         sel_school = st.selectbox(
