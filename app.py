@@ -2165,18 +2165,17 @@ def _page_overview_trends(cohort_groups: dict | None = None):
         st.divider()
         st.subheader(f"Each Institution — {sel_grp}")
         uid_list = cohort_groups.get(sel_grp, [])
-        cohort_trend = trend_df[trend_df["UNITID"].isin(uid_list)]
-        # One unique name per UNITID (prefer 2024-25 name; fall back to 2023-24)
-        uid_name = (
-            cohort_trend.sort_values("YEAR", ascending=False)
-            .drop_duplicates(subset="UNITID")[["UNITID", "INSTNM"]]
-            .sort_values("INSTNM")
-        )
-        for _, row in uid_name.iterrows():
-            uid  = row["UNITID"]
-            name = row["INSTNM"]
-            inst_rows = cohort_trend[cohort_trend["UNITID"] == uid].sort_values("YEAR")
-            with st.expander(name, expanded=("Albion College" in str(name))):
+        # Build (name, uid) pairs sorted alphabetically
+        name_uid = []
+        for uid in uid_list:
+            rows = trend_df[trend_df["UNITID"] == int(uid)]
+            if rows.empty:
+                continue
+            name_uid.append((str(rows["INSTNM"].iloc[0]), int(uid)))
+        name_uid.sort()
+        for name, uid in name_uid:
+            inst_rows = trend_df[trend_df["UNITID"] == uid].sort_values("YEAR")
+            with st.expander(name, expanded=("Albion College" in name)):
                 _render_inst_pivot(inst_rows)
 
 
