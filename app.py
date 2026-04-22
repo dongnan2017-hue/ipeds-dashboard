@@ -4601,7 +4601,7 @@ def page_trends(cohort_groups: dict):
         "Small Private NP — under 5,000 students": "builtin_size",
     }
 
-    # ── Selectors above tabs so widget state is always reliable ──────────────
+    # ── Row 1: two main selectors ─────────────────────────────────────────────
     fc1, fc2 = st.columns(2)
     with fc1:
         grp_options = ["All institutions"] + sorted(cohort_groups.keys())
@@ -4611,25 +4611,29 @@ def page_trends(cohort_groups: dict):
         sel_t = st.selectbox("Compare Albion against", cohort_options_t,
                              key="trends_albion_peer_sel")
 
-    # Optional: single institution from the selected cohort group
-    sel_inst_t = None
+    # ── Row 2: school selector — always visible ───────────────────────────────
+    # When a cohort group is active, show only that group's schools.
+    # When a built-in is active, show schools from all cohort groups.
     if sel_t not in BUILTIN_T:
-        group_uids = cohort_groups.get(sel_t, [])
-        group_names = (
-            trend_df[trend_df["UNITID"].isin(group_uids)][["UNITID", "INSTNM"]]
-            .drop_duplicates("UNITID")
-            .dropna(subset=["INSTNM"])
-            .sort_values("INSTNM")["INSTNM"]
-            .tolist()
-        )
-        inst_opts = ["— whole group (median) —"] + group_names
-        _sel_raw = st.selectbox(
-            f"Or pick one school from {sel_t}:",
-            inst_opts,
-            key="trends_single_inst_sel",
-        )
-        if _sel_raw != "— whole group (median) —":
-            sel_inst_t = _sel_raw
+        pool_uids = set(cohort_groups.get(sel_t, []))
+        school_lbl = f"Or compare 1-on-1 vs. one school from {sel_t}:"
+    else:
+        pool_uids = {uid for uids in cohort_groups.values() for uid in uids}
+        school_lbl = "Or compare 1-on-1 vs. one school (from any cohort):"
+
+    school_names = (
+        trend_df[trend_df["UNITID"].isin(pool_uids)][["UNITID", "INSTNM"]]
+        .drop_duplicates("UNITID")
+        .dropna(subset=["INSTNM"])
+        .sort_values("INSTNM")["INSTNM"]
+        .tolist()
+    )
+    _sel_school = st.selectbox(
+        school_lbl,
+        ["— whole group (median) —"] + school_names,
+        key="trends_single_inst_sel",
+    )
+    sel_inst_t = None if _sel_school == "— whole group (median) —" else _sel_school
 
     # compute lookup_df (National Trends tab filter)
     if sel_grp != "All institutions":
