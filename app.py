@@ -5078,6 +5078,23 @@ def main():
 
     # ── Sidebar footer ────────────────────────────────────────────────────────
     st.sidebar.divider()
+
+    # DB status diagnostic
+    if os.path.exists(DB_PATH):
+        size_mb = os.path.getsize(DB_PATH) / 1024 / 1024
+        try:
+            _con = duckdb.connect(DB_PATH, read_only=True)
+            yr_rows = _con.execute(
+                "SELECT YEAR, COUNT(*) AS N FROM METRICS_LONG GROUP BY YEAR ORDER BY YEAR"
+            ).fetchall()
+            _con.close()
+            yr_info = "  \n".join(f"  {y}: {n:,}" for y, n in yr_rows)
+            st.sidebar.caption(f"**DB:** {size_mb:.0f} MB  \n**Years in DB:**  \n{yr_info}")
+        except Exception:
+            st.sidebar.caption(f"**DB:** {size_mb:.0f} MB (single-year — needs refresh)")
+    else:
+        st.sidebar.caption("**DB:** not found")
+
     if st.sidebar.button("🔄 Refresh Data", use_container_width=True):
         st.cache_data.clear()
         if os.path.exists(DB_PATH):
