@@ -286,89 +286,151 @@ SCATTER_RATIONALE = [
 
 
 # ── Data loading ─────────────────────────────────────────────────────────────
+
+_SQL_2425 = """
+    SELECT
+        h.UNITID, h.INSTNM, h.CITY, h.STABBR, h.WEBADDR, h.COUNTYCD,
+        h.SECTOR, h.ICLEVEL, h.CONTROL, h.HLOFFER, h.DEGGRANT,
+        h.HBCU, h.TRIBAL, h.MEDICAL, h.LOCALE, h.INSTSIZE, h.OBEREG,
+        h.CARNEGIEIC, h.CARNEGIERSCH, h.CARNEGIESIZE, h.CARNEGIEALF,
+        h.LANDGRNT, h.CYACTIVE, h.LONGITUD, h.LATITUDE,
+        h.ZIP, h.CHFNM, h.CHFTITLE, h.GENTELE, h.OPEID,
+        h.ADMINURL, h.FAIDURL, h.APPLURL, h.NPRICURL, h.VETURL, h.DISAURL,
+        e.ENRTOT, e.FTE, e.EFUG, e.EFGRAD, e.ENRFT, e.ENRPT,
+        e.PCTENRW, e.PCTENRWH, e.PCTENRBK, e.PCTENRHS,
+        e.PCTENRAP, e.PCTENRAN, e.PCTENRUN, e.PCTENRNR, e.PCTENR2M,
+        e.PCTDEEXC, e.PCTDESOM, e.PCTDENON, e.PCTFT1ST,
+        ef12.UNDUP AS EF12UNDUP, ef12.UNDUPUG AS EF12UNDUPUG,
+        ef12.E12FT AS EF12FT, ef12.E12PT AS EF12PT,
+        ef12.E12UGFT AS EF12UGFT, ef12.E12GRAD AS EF12GRAD,
+        a.DVADM01, a.DVADM02, a.DVADM03, a.DVADM04,
+        a.DVADM05, a.DVADM06, a.DVADM07, a.DVADM08,
+        a.DVADM09, a.DVADM10, a.DVADM11, a.DVADM12,
+        g.GRRTTOT, g.GRRTM, g.GRRTW,
+        g.GRRTAN, g.GRRTAP, g.GRRTAS, g.GRRTNH, g.GRRTBK, g.GRRTHS, g.GRRTWH, g.GRRT2M, g.GRRTUN, g.GRRTNR,
+        g.GBA4RTT, g.GBA5RTT, g.GBA6RTT, g.GBA6RTM, g.GBA6RTW,
+        g.GBA6RTAN, g.GBA6RTAP, g.GBA6RTAS, g.GBA6RTNH, g.GBA6RTBK, g.GBA6RTHS, g.GBA6RTWH, g.GBA6RT2M, g.GBA6RTUN, g.GBA6RTNR,
+        g.GBATRRT, g.PGGRRTT, g.PGBA6RT, g.SSGRRTT, g.SSBA6RT, g.NRGRRTT, g.NRBA6RT, g.TRRTTOT,
+        c.CINSON, c.COTSON, c.CINDON, c.TUFEYR3,
+        d.BASDEG, d.MASDEG, d.DOCDEGRS, d.DOCDEGPP, d.DOCDEGOT,
+        d.ASCDEG, d.CERT1A, d.CERT1B, d.CERT2, d.CERT4,
+        r.SALTOTL, r.SALPROF, r.SALASSC, r.SALASST, r.SALINST,
+        r.SALLECT, r.SALNRNK,
+        r.SFTETOTL, r.SFTEPSTC, r.SFTEINST, r.SFTERSRC, r.SFTEPBSV,
+        r.SFTELCAI, r.SFTELCA, r.SFTEOTIS, r.SFTEMNGM, r.SFTEBFO,
+        r.SFTECES, r.SFTECLAM, r.SFTEHLTH, r.SFTEOTHR, r.SFTESRVC,
+        r.SFTESALE, r.SFTEOFAS, r.SFTENRCM, r.SFTEPTMM,
+        f.F1CORREV, f.F1COREXP, f.F2CORREV, f.F2COREXP,
+        ef.RET_PCF, ef.RET_PCP, ef.STUFACR,
+        ef.GRCOHRT, ef.UGENTERN, ef.PGRCOHRT,
+        ef.RRFTCT, ef.RRFTCTA, ef.RET_NMF,
+        ef.RRPTCT, ef.RRPTCTA, ef.RET_NMP,
+        s.ANYAIDP, s.PGRNT_P, s.PGRNT_A, s.AGRNT_P, s.AGRNT_A,
+        s.LOAN_P, s.LOAN_A, s.FGRNT_P, s.IGRNT_P, s.SGRNT_P,
+        om.OM1TOTLAWDP4, om.OM1TOTLAWDP6, om.OM1TOTLAWDP8,
+        om.OM1TOTLENYP8,
+        om.OM1PELLAWDP4, om.OM1PELLAWDP6, om.OM1PELLAWDP8,
+        om.OM1NPELAWDP4, om.OM1NPELAWDP6, om.OM1NPELAWDP8,
+        om.OM2TOTLAWDP4, om.OM2TOTLAWDP6, om.OM2TOTLAWDP8,
+        om.OM2TOTLENYP8,
+        om.OM2PELLAWDP4, om.OM2PELLAWDP6, om.OM2PELLAWDP8,
+        om.OM2NPELAWDP4, om.OM2NPELAWDP6, om.OM2NPELAWDP8,
+        om.OM3TOTLAWDP4, om.OM3TOTLAWDP6, om.OM3TOTLAWDP8,
+        om.OM4TOTLAWDP4, om.OM4TOTLAWDP6, om.OM4TOTLAWDP8,
+        lib.LPBOOKSP, lib.LEBOOKSP, lib.LEXPTOTF, lib.LTOTLFTE AS LIBLFTE
+    FROM HD2024 h
+    LEFT JOIN DRVEF2024      e    ON h.UNITID = e.UNITID
+    LEFT JOIN DRVEF122024    ef12 ON h.UNITID = ef12.UNITID
+    LEFT JOIN DRVADM2024     a    ON h.UNITID = a.UNITID
+    LEFT JOIN DRVGR2024      g    ON h.UNITID = g.UNITID
+    LEFT JOIN DRVCOST2024    c    ON h.UNITID = c.UNITID
+    LEFT JOIN DRVC2024       d    ON h.UNITID = d.UNITID
+    LEFT JOIN DRVHR2024      r    ON h.UNITID = r.UNITID
+    LEFT JOIN DRVF2024       f    ON h.UNITID = f.UNITID
+    LEFT JOIN EF2024D        ef   ON h.UNITID = ef.UNITID
+    LEFT JOIN SFA2324        s    ON h.UNITID = s.UNITID
+    LEFT JOIN DRVOM2024      om   ON h.UNITID = om.UNITID
+    LEFT JOIN DRVAL2024      lib  ON h.UNITID = lib.UNITID
+"""
+
+_SQL_2324 = """
+    SELECT
+        h.UNITID, h.INSTNM, h.CITY, h.STABBR, h.WEBADDR, h.COUNTYCD,
+        h.SECTOR, h.ICLEVEL, h.CONTROL, h.HLOFFER, h.DEGGRANT,
+        h.HBCU, h.TRIBAL, h.MEDICAL, h.LOCALE, h.INSTSIZE, h.OBEREG,
+        NULL AS CARNEGIEIC, NULL AS CARNEGIERSCH, NULL AS CARNEGIESIZE, NULL AS CARNEGIEALF,
+        h.LANDGRNT, h.CYACTIVE, h.LONGITUD, h.LATITUDE,
+        h.ZIP, h.CHFNM, h.CHFTITLE, h.GENTELE, h.OPEID,
+        h.ADMINURL, h.FAIDURL, h.APPLURL, h.NPRICURL,
+        NULL AS VETURL, NULL AS DISAURL,
+        e.ENRTOT, e.FTE, e.EFUG, e.EFGRAD, e.ENRFT, e.ENRPT,
+        e.PCTENRW, e.PCTENRWH, e.PCTENRBK, e.PCTENRHS,
+        e.PCTENRAP, e.PCTENRAN, e.PCTENRUN, e.PCTENRNR, e.PCTENR2M,
+        e.PCTDEEXC, NULL AS PCTDESOM, NULL AS PCTDENON, e.PCTFT1ST,
+        ef12.UNDUP AS EF12UNDUP, ef12.UNDUPUG AS EF12UNDUPUG,
+        ef12.E12FT AS EF12FT, ef12.E12PT AS EF12PT,
+        ef12.E12UGFT AS EF12UGFT, ef12.E12GRAD AS EF12GRAD,
+        a.DVADM01, a.DVADM02, a.DVADM03, a.DVADM04,
+        a.DVADM05, a.DVADM06, a.DVADM07, a.DVADM08,
+        a.DVADM09, a.DVADM10, a.DVADM11, a.DVADM12,
+        g.GRRTTOT, g.GRRTM, g.GRRTW,
+        g.GRRTAN, g.GRRTAP, g.GRRTAS, g.GRRTNH, g.GRRTBK, g.GRRTHS, g.GRRTWH, g.GRRT2M, g.GRRTUN, g.GRRTNR,
+        g.GBA4RTT, g.GBA5RTT, g.GBA6RTT,
+        NULL AS GBA6RTM, NULL AS GBA6RTW,
+        NULL AS GBA6RTAN, NULL AS GBA6RTAP, NULL AS GBA6RTAS, NULL AS GBA6RTNH,
+        NULL AS GBA6RTBK, NULL AS GBA6RTHS, NULL AS GBA6RTWH, NULL AS GBA6RT2M,
+        NULL AS GBA6RTUN, NULL AS GBA6RTNR,
+        NULL AS GBATRRT, g.PGGRRTT, NULL AS PGBA6RT,
+        NULL AS SSGRRTT, NULL AS SSBA6RT, NULL AS NRGRRTT, NULL AS NRBA6RT, g.TRRTTOT,
+        c.CINSON, c.COTSON, NULL AS CINDON, c.TUFEYR3,
+        d.BASDEG, d.MASDEG, d.DOCDEGRS, d.DOCDEGPP, NULL AS DOCDEGOT,
+        d.ASCDEG, d.CERT1A, d.CERT1B, d.CERT2, d.CERT4,
+        r.SALTOTL,
+        NULL AS SALPROF, NULL AS SALASSC, NULL AS SALASST, NULL AS SALINST,
+        NULL AS SALLECT, NULL AS SALNRNK,
+        r.SFTETOTL, NULL AS SFTEPSTC, r.SFTEINST, NULL AS SFTERSRC, NULL AS SFTEPBSV,
+        NULL AS SFTELCAI, NULL AS SFTELCA, NULL AS SFTEOTIS, NULL AS SFTEMNGM, NULL AS SFTEBFO,
+        NULL AS SFTECES, NULL AS SFTECLAM, NULL AS SFTEHLTH, NULL AS SFTEOTHR, NULL AS SFTESRVC,
+        NULL AS SFTESALE, NULL AS SFTEOFAS, NULL AS SFTENRCM, NULL AS SFTEPTMM,
+        f.F1CORREV, f.F1COREXP, f.F2CORREV, f.F2COREXP,
+        ef.RET_PCF, ef.RET_PCP, ef.STUFACR,
+        NULL AS GRCOHRT, NULL AS UGENTERN, NULL AS PGRCOHRT,
+        NULL AS RRFTCT, NULL AS RRFTCTA, NULL AS RET_NMF,
+        NULL AS RRPTCT, NULL AS RRPTCTA, NULL AS RET_NMP,
+        s.ANYAIDP, s.PGRNT_P, s.PGRNT_A, s.AGRNT_P, s.AGRNT_A,
+        s.LOAN_P, NULL AS LOAN_A, s.FGRNT_P, s.IGRNT_P, s.SGRNT_P,
+        NULL AS OM1TOTLAWDP4, NULL AS OM1TOTLAWDP6, om.OM1TOTLAWDP8,
+        NULL AS OM1TOTLENYP8,
+        NULL AS OM1PELLAWDP4, NULL AS OM1PELLAWDP6, om.OM1PELLAWDP8,
+        NULL AS OM1NPELAWDP4, NULL AS OM1NPELAWDP6, om.OM1NPELAWDP8,
+        NULL AS OM2TOTLAWDP4, NULL AS OM2TOTLAWDP6, om.OM2TOTLAWDP8,
+        NULL AS OM2TOTLENYP8,
+        NULL AS OM2PELLAWDP4, NULL AS OM2PELLAWDP6, NULL AS OM2PELLAWDP8,
+        NULL AS OM2NPELAWDP4, NULL AS OM2NPELAWDP6, NULL AS OM2NPELAWDP8,
+        NULL AS OM3TOTLAWDP4, NULL AS OM3TOTLAWDP6, NULL AS OM3TOTLAWDP8,
+        NULL AS OM4TOTLAWDP4, NULL AS OM4TOTLAWDP6, NULL AS OM4TOTLAWDP8,
+        NULL AS LPBOOKSP, lib.LEBOOKSP, lib.LEXPTOTF, NULL AS LIBLFTE
+    FROM HD2023 h
+    LEFT JOIN DRVEF2023      e    ON h.UNITID = e.UNITID
+    LEFT JOIN DRVEF122023    ef12 ON h.UNITID = ef12.UNITID
+    LEFT JOIN DRVADM2023     a    ON h.UNITID = a.UNITID
+    LEFT JOIN DRVGR2023      g    ON h.UNITID = g.UNITID
+    LEFT JOIN DRVIC2023      c    ON h.UNITID = c.UNITID
+    LEFT JOIN DRVC2023       d    ON h.UNITID = d.UNITID
+    LEFT JOIN DRVHR2023      r    ON h.UNITID = r.UNITID
+    LEFT JOIN DRVF2023       f    ON h.UNITID = f.UNITID
+    LEFT JOIN EF2023D        ef   ON h.UNITID = ef.UNITID
+    LEFT JOIN SFA2223_P1     s    ON h.UNITID = s.UNITID
+    LEFT JOIN DRVOM2023      om   ON h.UNITID = om.UNITID
+    LEFT JOIN DRVAL2023      lib  ON h.UNITID = lib.UNITID
+"""
+
+
 @st.cache_data(show_spinner="Loading IPEDS data …")
-def load_master() -> pd.DataFrame:
+def load_master(year: str = "2024-25") -> pd.DataFrame:
     con = duckdb.connect(DB_PATH, read_only=True)
-    df = con.execute("""
-        SELECT
-            h.UNITID, h.INSTNM, h.CITY, h.STABBR, h.WEBADDR, h.COUNTYCD,
-            h.SECTOR, h.ICLEVEL, h.CONTROL, h.HLOFFER, h.DEGGRANT,
-            h.HBCU, h.TRIBAL, h.MEDICAL, h.LOCALE, h.INSTSIZE, h.OBEREG,
-            h.CARNEGIEIC, h.CARNEGIERSCH, h.CARNEGIESIZE, h.CARNEGIEALF,
-            h.LANDGRNT, h.CYACTIVE, h.LONGITUD, h.LATITUDE,
-            h.ZIP, h.CHFNM, h.CHFTITLE, h.GENTELE, h.OPEID,
-            h.ADMINURL, h.FAIDURL, h.APPLURL, h.NPRICURL, h.VETURL, h.DISAURL,
-            -- Enrollment (derived)
-            e.ENRTOT, e.FTE, e.EFUG, e.EFGRAD, e.ENRFT, e.ENRPT,
-            e.PCTENRW, e.PCTENRWH, e.PCTENRBK, e.PCTENRHS,
-            e.PCTENRAP, e.PCTENRAN, e.PCTENRUN, e.PCTENRNR, e.PCTENR2M,
-            e.PCTDEEXC, e.PCTDESOM, e.PCTDENON, e.PCTFT1ST,
-            -- 12-month enrollment (derived)
-            ef12.UNDUP AS EF12UNDUP, ef12.UNDUPUG AS EF12UNDUPUG,
-            ef12.E12FT AS EF12FT, ef12.E12PT AS EF12PT,
-            ef12.E12UGFT AS EF12UGFT, ef12.E12GRAD AS EF12GRAD,
-            -- Admissions (derived)
-            a.DVADM01, a.DVADM02, a.DVADM03, a.DVADM04,
-            a.DVADM05, a.DVADM06, a.DVADM07, a.DVADM08,
-            a.DVADM09, a.DVADM10, a.DVADM11, a.DVADM12,
-            -- Graduation rates (derived)
-            g.GRRTTOT, g.GRRTM, g.GRRTW,
-            g.GRRTAN, g.GRRTAP, g.GRRTAS, g.GRRTNH, g.GRRTBK, g.GRRTHS, g.GRRTWH, g.GRRT2M, g.GRRTUN, g.GRRTNR,
-            g.GBA4RTT, g.GBA5RTT, g.GBA6RTT, g.GBA6RTM, g.GBA6RTW,
-            g.GBA6RTAN, g.GBA6RTAP, g.GBA6RTAS, g.GBA6RTNH, g.GBA6RTBK, g.GBA6RTHS, g.GBA6RTWH, g.GBA6RT2M, g.GBA6RTUN, g.GBA6RTNR,
-            g.GBATRRT, g.PGGRRTT, g.PGBA6RT, g.SSGRRTT, g.SSBA6RT, g.NRGRRTT, g.NRBA6RT, g.TRRTTOT,
-            -- Cost (derived)
-            c.CINSON, c.COTSON, c.CINDON, c.TUFEYR3,
-            -- Completions (derived)
-            d.BASDEG, d.MASDEG, d.DOCDEGRS, d.DOCDEGPP, d.DOCDEGOT,
-            d.ASCDEG, d.CERT1A, d.CERT1B, d.CERT2, d.CERT4,
-            -- HR: salaries
-            r.SALTOTL, r.SALPROF, r.SALASSC, r.SALASST, r.SALINST,
-            r.SALLECT, r.SALNRNK,
-            -- HR: FTE by occupational category
-            r.SFTETOTL, r.SFTEPSTC, r.SFTEINST, r.SFTERSRC, r.SFTEPBSV,
-            r.SFTELCAI, r.SFTELCA, r.SFTEOTIS, r.SFTEMNGM, r.SFTEBFO,
-            r.SFTECES, r.SFTECLAM, r.SFTEHLTH, r.SFTEOTHR, r.SFTESRVC,
-            r.SFTESALE, r.SFTEOFAS, r.SFTENRCM, r.SFTEPTMM,
-            -- Finance (derived)
-            f.F1CORREV, f.F1COREXP, f.F2CORREV, f.F2COREXP,
-            -- Retention / student-faculty ratio (EF2024D)
-            ef.RET_PCF, ef.RET_PCP, ef.STUFACR,
-            ef.GRCOHRT, ef.UGENTERN, ef.PGRCOHRT,
-            ef.RRFTCT, ef.RRFTCTA, ef.RET_NMF,
-            ef.RRPTCT, ef.RRPTCTA, ef.RET_NMP,
-            -- Financial aid
-            s.ANYAIDP, s.PGRNT_P, s.PGRNT_A, s.AGRNT_P, s.AGRNT_A,
-            s.LOAN_P, s.LOAN_A, s.FGRNT_P, s.IGRNT_P, s.SGRNT_P,
-            -- Outcome measures (derived): full-time first-time
-            om.OM1TOTLAWDP4, om.OM1TOTLAWDP6, om.OM1TOTLAWDP8,
-            om.OM1TOTLENYP8,
-            om.OM1PELLAWDP4, om.OM1PELLAWDP6, om.OM1PELLAWDP8,
-            om.OM1NPELAWDP4, om.OM1NPELAWDP6, om.OM1NPELAWDP8,
-            -- Outcome measures: part-time first-time
-            om.OM2TOTLAWDP4, om.OM2TOTLAWDP6, om.OM2TOTLAWDP8,
-            om.OM2TOTLENYP8,
-            om.OM2PELLAWDP4, om.OM2PELLAWDP6, om.OM2PELLAWDP8,
-            om.OM2NPELAWDP4, om.OM2NPELAWDP6, om.OM2NPELAWDP8,
-            -- Outcome measures: non-first-time full-time (OM3) and part-time (OM4)
-            om.OM3TOTLAWDP4, om.OM3TOTLAWDP6, om.OM3TOTLAWDP8,
-            om.OM4TOTLAWDP4, om.OM4TOTLAWDP6, om.OM4TOTLAWDP8,
-            -- Library (derived)
-            lib.LPBOOKSP, lib.LEBOOKSP, lib.LEXPTOTF, lib.LTOTLFTE AS LIBLFTE
-        FROM HD2024 h
-        LEFT JOIN DRVEF2024      e    ON h.UNITID = e.UNITID
-        LEFT JOIN DRVEF122024    ef12 ON h.UNITID = ef12.UNITID
-        LEFT JOIN DRVADM2024     a    ON h.UNITID = a.UNITID
-        LEFT JOIN DRVGR2024      g    ON h.UNITID = g.UNITID
-        LEFT JOIN DRVCOST2024    c    ON h.UNITID = c.UNITID
-        LEFT JOIN DRVC2024       d    ON h.UNITID = d.UNITID
-        LEFT JOIN DRVHR2024      r    ON h.UNITID = r.UNITID
-        LEFT JOIN DRVF2024       f    ON h.UNITID = f.UNITID
-        LEFT JOIN EF2024D        ef   ON h.UNITID = ef.UNITID
-        LEFT JOIN SFA2324        s    ON h.UNITID = s.UNITID
-        LEFT JOIN DRVOM2024      om   ON h.UNITID = om.UNITID
-        LEFT JOIN DRVAL2024      lib  ON h.UNITID = lib.UNITID
-    """).df()
+    sql = _SQL_2425 if year == "2024-25" else _SQL_2324
+    df = con.execute(sql).df()
     def _make_map(varname: str) -> dict:
         rows = con.execute(
             f"SELECT CODEVALUE, VALUELABEL FROM META_VALUES "
@@ -583,12 +645,18 @@ def _add_albion_vline(fig, alb_row, col: str, label: str = "◆ Albion"):
 
 
 # ── Page 1: National Overview ────────────────────────────────────────────────
-def page_overview(df: pd.DataFrame, sel_groups: list | None = None):
-    if sel_groups:
-        group_label = ", ".join(sel_groups)
-        st.title(f"Cohort Overview — {group_label}")
-    else:
-        st.title("National Overview — IPEDS 2024-25")
+def page_overview(df: pd.DataFrame, sel_groups: list | None = None, year: str = "2024-25"):
+    h_col, y_col = st.columns([7, 3])
+    with h_col:
+        if sel_groups:
+            group_label = ", ".join(sel_groups)
+            st.title(f"Cohort Overview — {group_label}")
+        else:
+            st.title(f"National Overview — IPEDS {year}")
+    with y_col:
+        st.markdown("<div style='padding-top:1.1rem'></div>", unsafe_allow_html=True)
+        st.radio("Data Year", ["2024-25", "2023-24"], horizontal=True,
+                 key="year_National Overview", label_visibility="collapsed")
     _alb = df[df["INSTNM"].str.contains("Albion College", case=False, na=False)]
     alb_row = _alb.iloc[0] if not _alb.empty else None
 
@@ -614,11 +682,10 @@ def page_overview(df: pd.DataFrame, sel_groups: list | None = None):
     c9.metric("Median In-State COA",   f"${med_coa:,.0f}" if not pd.isna(med_coa) else "N/A")
 
     st.divider()
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
         "Map & Directory", "Enrollment & Demographics", "Admissions & Selectivity",
         "Graduation & Outcomes", "Costs & Financial Aid", "Faculty & Finance",
         "Completions & Degrees", "Institutional Finance", "Libraries",
-        "Year-over-Year",
     ])
 
     with tab1:
@@ -1674,9 +1741,6 @@ def page_overview(df: pd.DataFrame, sel_groups: list | None = None):
             "LPBOOKSP": "Physical Books/FTE", "LIBLFTE": "Library Staff FTE",
         }), sort_col="Expend/FTE ($)")
 
-    with tab10:
-        _page_overview_trends(df)
-
     st.divider()
     st.subheader("Scatter Explorer")
     _scatter_explorer(df)
@@ -1891,8 +1955,8 @@ def _scatter_explorer(df: pd.DataFrame):
                                     x_var, y_var, z_var, chart_idx)
 
 
-def _page_overview_trends(df_current: pd.DataFrame):
-    """Year-over-Year tab content for the National Overview page."""
+def _page_overview_trends():
+    """National year-over-year trends section."""
     st.subheader("National Trends — 2023-24 vs 2024-25")
     trend_df = load_trends()
 
@@ -1999,8 +2063,14 @@ def _page_overview_trends(df_current: pd.DataFrame):
 
 
 # ── Page 2: Institution Profile ──────────────────────────────────────────────
-def page_profile(df: pd.DataFrame):
-    st.title("Institution Profile")
+def page_profile(df: pd.DataFrame, year: str = "2024-25"):
+    h_col, y_col = st.columns([7, 3])
+    with h_col:
+        st.title("Institution Profile")
+    with y_col:
+        st.markdown("<div style='padding-top:1.1rem'></div>", unsafe_allow_html=True)
+        st.radio("Data Year", ["2024-25", "2023-24"], horizontal=True,
+                 key="year_Institution Profile", label_visibility="collapsed")
 
     names = sorted(df["DISPLAY_NAME"].dropna().unique().tolist())
     pre = st.session_state.get("sel_inst")
@@ -4035,8 +4105,14 @@ def page_profile(df: pd.DataFrame):
 
 
 # ── Page 3: Compare Institutions ─────────────────────────────────────────────
-def page_compare(df: pd.DataFrame, cohort_groups: dict):
-    st.title("Compare Institutions")
+def page_compare(df: pd.DataFrame, cohort_groups: dict, year: str = "2024-25"):
+    h_col, y_col = st.columns([7, 3])
+    with h_col:
+        st.title("Compare Institutions")
+    with y_col:
+        st.markdown("<div style='padding-top:1.1rem'></div>", unsafe_allow_html=True)
+        st.radio("Data Year", ["2024-25", "2023-24"], horizontal=True,
+                 key="year_Compare Institutions", label_visibility="collapsed")
 
     names = sorted(df["DISPLAY_NAME"].dropna().unique())
 
@@ -4248,8 +4324,9 @@ def page_compare(df: pd.DataFrame, cohort_groups: dict):
 
 
 # ── Page 4: Albion College Analysis ─────────────────────────────────────────
-def _albion_trends_tab(alb_current, peers_current, peer_label: str, cohort_groups: dict, sel: str):
-    """📈 Trends tab inside Albion Analysis — year-over-year view."""
+def _albion_trends_tab(alb_current, peers_current, peer_label: str, cohort_groups: dict, sel: str,
+                       _peer_trend_override=None):
+    """Year-over-year Albion trends. _peer_trend_override lets page_trends inject pre-built peer data."""
     st.subheader(f"Albion College — Year-over-Year vs. {peer_label}")
     st.caption("Compares 2023-24 (Final) and 2024-25 (Provisional) IPEDS data.")
 
@@ -4260,19 +4337,22 @@ def _albion_trends_tab(alb_current, peers_current, peer_label: str, cohort_group
         st.warning("Albion College trend data not found in METRICS_LONG.")
         return
 
-    BUILTIN = {
-        "All Private Non-Profit (national)": "builtin_np",
-        "Small Private NP — under 5,000 students": "builtin_size",
-    }
-    if sel in BUILTIN:
-        if BUILTIN[sel] == "builtin_np":
-            peer_trend = trend_df[trend_df["CONTROL"] == 2]
-        else:
-            peer_trend = trend_df[(trend_df["CONTROL"] == 2) & (trend_df["INSTSIZE"].isin([1, 2]))]
+    if _peer_trend_override is not None:
+        peer_trend = _peer_trend_override
     else:
-        uid_list = cohort_groups.get(sel, [])
-        peer_trend = trend_df[trend_df["UNITID"].isin(uid_list)]
-    peer_trend = peer_trend[~peer_trend["INSTNM"].str.contains("Albion College", case=False, na=False)]
+        BUILTIN = {
+            "All Private Non-Profit (national)": "builtin_np",
+            "Small Private NP — under 5,000 students": "builtin_size",
+        }
+        if sel in BUILTIN:
+            if BUILTIN[sel] == "builtin_np":
+                peer_trend = trend_df[trend_df["CONTROL"] == 2]
+            else:
+                peer_trend = trend_df[(trend_df["CONTROL"] == 2) & (trend_df["INSTSIZE"].isin([1, 2]))]
+        else:
+            uid_list = cohort_groups.get(sel, [])
+            peer_trend = trend_df[trend_df["UNITID"].isin(uid_list)]
+        peer_trend = peer_trend[~peer_trend["INSTNM"].str.contains("Albion College", case=False, na=False)]
 
     METRICS = [
         ("Grad Rate 150% (%)",    "GRRTTOT",      True,  "{:.1f}%"),
@@ -4355,8 +4435,46 @@ def _albion_trends_tab(alb_current, peers_current, peer_label: str, cohort_group
         cols[i % 2].plotly_chart(fig, use_container_width=True)
 
 
-def page_albion(df: pd.DataFrame, cohort_groups: dict):
-    st.title("Albion College — Strategic Performance Analysis")
+# ── Page 5: Year-over-Year Trends ────────────────────────────────────────────
+def page_trends(cohort_groups: dict):
+    st.title("Year-over-Year Trends — 2023-24 vs 2024-25")
+    st.caption("Compares final 2023-24 IPEDS data with provisional 2024-25 data.")
+
+    t1, t2 = st.tabs(["National Trends", "Albion College Trends"])
+
+    with t1:
+        _page_overview_trends()
+
+    with t2:
+        # ── Peer group selector (self-contained) ──────────────────────────────
+        BUILTIN_T = {
+            "All Private Non-Profit (national)": "builtin_np",
+            "Small Private NP — under 5,000 students": "builtin_size",
+        }
+        cohort_options_t = list(BUILTIN_T.keys()) + sorted(cohort_groups.keys())
+        sel_t = st.selectbox("Compare Albion against", cohort_options_t,
+                             key="trends_albion_peer_sel")
+        trend_df = load_trends()
+        if BUILTIN_T.get(sel_t) == "builtin_np":
+            peer_trend_t = trend_df[trend_df["CONTROL"] == 2]
+        elif BUILTIN_T.get(sel_t) == "builtin_size":
+            peer_trend_t = trend_df[(trend_df["CONTROL"] == 2) & (trend_df["INSTSIZE"].isin([1, 2]))]
+        else:
+            uid_list_t = cohort_groups.get(sel_t, [])
+            peer_trend_t = trend_df[trend_df["UNITID"].isin(uid_list_t)]
+        peer_trend_t = peer_trend_t[~peer_trend_t["INSTNM"].str.contains("Albion College", case=False, na=False)]
+        _albion_trends_tab(None, None, sel_t, cohort_groups, sel_t,
+                           _peer_trend_override=peer_trend_t)
+
+
+def page_albion(df: pd.DataFrame, cohort_groups: dict, year: str = "2024-25"):
+    h_col, y_col = st.columns([7, 3])
+    with h_col:
+        st.title("Albion College — Strategic Performance Analysis")
+    with y_col:
+        st.markdown("<div style='padding-top:1.1rem'></div>", unsafe_allow_html=True)
+        st.radio("Data Year", ["2024-25", "2023-24"], horizontal=True,
+                 key="year_Albion Analysis", label_visibility="collapsed")
 
     alb_all = df[df["INSTNM"].str.contains("Albion College", case=False, na=False)]
     if alb_all.empty:
@@ -4614,7 +4732,7 @@ most actionable benchmark for strategic planning.
 
     # ── Deep-dive analysis sections ───────────────────────────────────────────
     st.subheader("Deep-Dive Analysis by Domain")
-    d1, d2, d3, d4, d5 = st.tabs(["Student Success", "Equity & Access", "Costs & Value", "Faculty & Resources", "📈 Trends"])
+    d1, d2, d3, d4 = st.tabs(["Student Success", "Equity & Access", "Costs & Value", "Faculty & Resources"])
 
     # ── Tab: Student Success ──────────────────────────────────────────────────
     with d1:
@@ -4983,9 +5101,6 @@ most actionable benchmark for strategic planning.
         if lines:
             st.markdown("\n".join(lines))
 
-    with d5:
-        _albion_trends_tab(alb, peers, peer_label, cohort_groups, sel)
-
     st.divider()
     # ── Summary recommendation box ────────────────────────────────────────────
     st.subheader("Summary: Recommended Priority Actions")
@@ -5045,7 +5160,6 @@ def main():
     </style>
     """, unsafe_allow_html=True)
 
-    df = load_master()
     cohort_groups = load_cohort()
 
     if "page" not in st.session_state:
@@ -5053,8 +5167,9 @@ def main():
     if "sel_inst" not in st.session_state:
         st.session_state["sel_inst"] = None
 
-    st.sidebar.title("🎓 IPEDS 2024-25")
-    pages = ["National Overview", "Institution Profile", "Compare Institutions", "Albion Analysis"]
+    st.sidebar.title("🎓 IPEDS Dashboard")
+    pages = ["National Overview", "Institution Profile", "Compare Institutions",
+             "Albion Analysis", "Year-over-Year"]
     page_idx = pages.index(st.session_state["page"]) if st.session_state["page"] in pages else 0
     page = st.sidebar.radio(
         "Navigate",
@@ -5066,20 +5181,35 @@ def main():
         st.session_state["page"] = page
     st.sidebar.divider()
 
+    # ── Determine selected data year for this page ────────────────────────────
+    _YEAR_PAGES = {"National Overview", "Institution Profile", "Compare Institutions", "Albion Analysis"}
+    if page in _YEAR_PAGES:
+        year = st.session_state.get(f"year_{page}", "2024-25")
+    else:
+        year = "2024-25"
+
+    # ── Load data (year-parameterized; cached per year) ───────────────────────
+    if page != "Year-over-Year":
+        df = load_master(year)
+
+    # ── Apply sidebar filters ─────────────────────────────────────────────────
     if page in ("National Overview", "Compare Institutions"):
         df_filtered, sel_groups = apply_filters(df.copy(), cohort_groups)
-    else:
+    elif page != "Year-over-Year":
         df_filtered = df
         sel_groups = []
 
+    # ── Route to page ─────────────────────────────────────────────────────────
     if page == "National Overview":
-        page_overview(df_filtered, sel_groups)
+        page_overview(df_filtered, sel_groups, year)
     elif page == "Institution Profile":
-        page_profile(df_filtered)
+        page_profile(df_filtered, year)
     elif page == "Compare Institutions":
-        page_compare(df_filtered, cohort_groups)
+        page_compare(df_filtered, cohort_groups, year)
+    elif page == "Albion Analysis":
+        page_albion(df, cohort_groups, year)
     else:
-        page_albion(df, cohort_groups)
+        page_trends(cohort_groups)
 
     # ── Sidebar footer ────────────────────────────────────────────────────────
     st.sidebar.divider()
