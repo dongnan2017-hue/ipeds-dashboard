@@ -4656,9 +4656,9 @@ def main():
         /* Captions */
         [data-testid="stCaptionContainer"] p { font-size:0.95rem !important; }
         /* Metrics */
-        [data-testid="stMetricLabel"] > div  { font-size:1rem    !important; }
-        [data-testid="stMetricValue"] > div  { font-size:1.9rem  !important; }
-        [data-testid="stMetricDelta"] > div  { font-size:0.95rem !important; }
+        [data-testid="stMetricLabel"] > div  { font-size:0.85rem !important; }
+        [data-testid="stMetricValue"] > div  { font-size:1.25rem !important; }
+        [data-testid="stMetricDelta"] > div  { font-size:0.8rem  !important; }
         /* Tab labels */
         .stTabs [data-baseweb="tab"] { font-size:1rem !important; padding:8px 16px !important; }
         /* Selectbox / multiselect / radio labels */
