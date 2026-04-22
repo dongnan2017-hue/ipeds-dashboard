@@ -2129,8 +2129,8 @@ def _page_overview_trends(cohort_groups: dict | None = None):
         st.divider()
 
     # ── Per-institution detail ─────────────────────────────────────────────────
-    def _render_inst_pivot(inst_name: str):
-        inst_df = trend_df[trend_df["INSTNM"] == inst_name].sort_values("YEAR")
+    def _render_inst_pivot(inst_df: pd.DataFrame):
+        """Render Metric | 2023-24 | 2024-25 | Δ table for the given institution rows."""
         rows_out = []
         for label, (col, _) in TREND_METRICS.items():
             row = {"Metric": label}
@@ -2158,17 +2158,26 @@ def _page_overview_trends(cohort_groups: dict | None = None):
     sel_inst = st.selectbox("Search institution", ["— select —"] + all_inst_names,
                             key="trend_inst_sel")
     if sel_inst and sel_inst != "— select —":
-        _render_inst_pivot(sel_inst)
+        _render_inst_pivot(trend_df[trend_df["INSTNM"] == sel_inst].sort_values("YEAR"))
 
     # ── Each institution in the cohort ────────────────────────────────────────
     if sel_grp != "All institutions":
         st.divider()
         st.subheader(f"Each Institution — {sel_grp}")
-        cohort_names = sorted(lookup_df["INSTNM"].dropna().unique())
-        for name in cohort_names:
-            is_albion = "Albion College" in name
-            with st.expander(name, expanded=is_albion):
-                _render_inst_pivot(name)
+        uid_list = cohort_groups.get(sel_grp, [])
+        cohort_trend = trend_df[trend_df["UNITID"].isin(uid_list)]
+        # One unique name per UNITID (prefer 2024-25 name; fall back to 2023-24)
+        uid_name = (
+            cohort_trend.sort_values("YEAR", ascending=False)
+            .drop_duplicates(subset="UNITID")[["UNITID", "INSTNM"]]
+            .sort_values("INSTNM")
+        )
+        for _, row in uid_name.iterrows():
+            uid  = row["UNITID"]
+            name = row["INSTNM"]
+            inst_rows = cohort_trend[cohort_trend["UNITID"] == uid].sort_values("YEAR")
+            with st.expander(name, expanded=("Albion College" in str(name))):
+                _render_inst_pivot(inst_rows)
 
 
 # ── Page 2: Institution Profile ──────────────────────────────────────────────
