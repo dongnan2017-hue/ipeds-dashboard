@@ -4400,33 +4400,26 @@ def page_trends(cohort_groups: dict):
             key="yt_peer",
         )
 
-    # Second row: individual school selector — always two columns, always visible
-    ss1, ss2 = st.columns(2)
-    with ss1:
-        # Build school list: from sel_peer_grp if it's a cohort, else all cohorts
-        if sel_peer_grp not in BUILTIN:
-            _pool = cohort_groups.get(sel_peer_grp, [])
-        else:
-            _pool = [uid for uids in cohort_groups.values() for uid in uids]
-        # Build uid→name lookup so we filter by UNITID (not string matching)
-        _school_rows = (
-            trend_df[trend_df["UNITID"].isin(_pool)][["UNITID", "INSTNM"]]
-            .drop_duplicates("UNITID").dropna(subset=["INSTNM"])
-            .sort_values("INSTNM")
-        )
-        _uid_by_name  = {str(r["INSTNM"]): int(r["UNITID"]) for _, r in _school_rows.iterrows()}
-        _school_names = list(_uid_by_name.keys())
-        sel_school = st.selectbox(
-            "Or compare 1-on-1 vs. one school:",
-            ["— use group median —"] + _school_names,
-            key="yt_school",
-        )
-    with ss2:
-        use_single = sel_school != "— use group median —"
-        if use_single:
-            st.info(f"1-on-1 mode: **{sel_school}**  \nAlbion tab compares directly against this school.")
-        else:
-            st.info("Group mode: Albion tab compares against the group median.")
+    # Build school list outside any column — from sel_peer_grp if cohort, else all cohorts
+    if sel_peer_grp not in BUILTIN:
+        _pool = cohort_groups.get(sel_peer_grp, [])
+    else:
+        _pool = [uid for uids in cohort_groups.values() for uid in uids]
+    _school_rows = (
+        trend_df[trend_df["UNITID"].isin(_pool)][["UNITID", "INSTNM"]]
+        .drop_duplicates("UNITID").dropna(subset=["INSTNM"])
+        .sort_values("INSTNM")
+    )
+    _uid_by_name  = {str(r["INSTNM"]): int(r["UNITID"]) for _, r in _school_rows.iterrows()}
+    _school_names = list(_uid_by_name.keys())
+
+    # Full-width school selector — always visible, no column wrapper
+    sel_school = st.selectbox(
+        "Or compare Albion 1-on-1 vs. one school:",
+        ["— use group median —"] + _school_names,
+        key="yt_school",
+    )
+    use_single = sel_school != "— use group median —"
 
     # ── Derived DataFrames ────────────────────────────────────────────────────
     # National tab scope
