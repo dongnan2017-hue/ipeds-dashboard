@@ -379,6 +379,31 @@ def load_master() -> pd.DataFrame:
 
 
 @st.cache_data(show_spinner=False)
+def load_trends() -> pd.DataFrame:
+    """Load METRICS_LONG (all years) with label columns decoded."""
+    con = duckdb.connect(DB_PATH, read_only=True)
+    df = con.execute("SELECT * FROM METRICS_LONG").df()
+
+    def _map(varname: str) -> dict:
+        rows = con.execute(
+            f"SELECT CODEVALUE, VALUELABEL FROM META_VALUES "
+            f"WHERE upper(VARNAME)='{varname.upper()}'"
+        ).fetchall()
+        return {int(r[0]): r[1] for r in rows if r[0] is not None}
+
+    instsize_map = _map("INSTSIZE")
+    obereg_map   = _map("OBEREG")
+    con.close()
+
+    df["CONTROL_LBL"] = df["CONTROL"].map(CONTROL_MAP).fillna("Not available")
+    df["SECTOR_LBL"]  = df["SECTOR"].map(SECTOR_MAP).fillna("Not available")
+    df["LEVEL_LBL"]   = df["ICLEVEL"].map(LEVEL_MAP).fillna("Not available")
+    df["INSTSIZE_LBL"] = df["INSTSIZE"].map(instsize_map).fillna("Not available")
+    df["OBEREG_LBL"]   = df["OBEREG"].map(obereg_map).fillna("Not available")
+    return df
+
+
+@st.cache_data(show_spinner=False)
 def load_cohort() -> dict[str, list[int]]:
     """Return {group_name: [UNITID, ...]} from grouping.csv, or {} if file missing."""
     if not os.path.exists(COHORT_PATH):
@@ -566,10 +591,11 @@ def page_overview(df: pd.DataFrame, sel_groups: list | None = None):
     c9.metric("Median In-State COA",   f"${med_coa:,.0f}" if not pd.isna(med_coa) else "N/A")
 
     st.divider()
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs([
         "Map & Directory", "Enrollment & Demographics", "Admissions & Selectivity",
         "Graduation & Outcomes", "Costs & Financial Aid", "Faculty & Finance",
         "Completions & Degrees", "Institutional Finance", "Libraries",
+        "Year-over-Year",
     ])
 
     with tab1:
@@ -1837,6 +1863,111 @@ def _scatter_explorer(df: pd.DataFrame):
             st.caption(f"n = **{len(sc_df):,}** institutions with data for all three variables.")
             _scatter_albion_insight(sc_df, albion, x_col, y_col, z_col,
                                     x_var, y_var, z_var, chart_idx)
+
+    with tab10:
+        _page_overview_trends(df)
+
+
+def _page_overview_trends(df_current: pd.DataFrame):
+    """Year-over-Year tab content for the National Overview page."""
+    st.subheader("National Trends — 2023-24 vs 2024-25")
+    trend_df = load_trends()
+
+    TREND_METRICS = {
+        "Grad Rate 150% (%)":     ("GRRTTOT",      True),
+        "FT Retention Rate (%)":  ("RET_PCF",       True),
+        "Acceptance Rate (%)":    ("DVADM01",       False),
+        "% Receiving Pell":       ("PGRNT_P",       True),
+        "In-State COA ($)":       ("CINSON",        False),
+        "Avg Faculty Salary ($)": ("SALTOTL",       True),
+        "FT Enrollment":          ("ENRFT",         True),
+        "8-yr Award Rate (%)":    ("OM1TOTLAWDP8",  True),
+        "Student:Faculty Ratio":  ("STUFACR",       False),
+    }
+
+    # ── National median comparison table ──────────────────────────────────────
+    rows = []
+    for label, (col, _) in TREND_METRICS.items():
+        for yr in ["2023-24", "2024-25"]:
+            sub = trend_df[(trend_df["YEAR"] == yr) & trend_df[col].notna()]
+            rows.append({"Metric": label, "Year": yr, "Median": sub[col].median()})
+    med_df = pd.DataFrame(rows)
+
+    pivot = med_df.pivot(index="Metric", columns="Year", values="Median")
+    if "2023-24" in pivot.columns and "2024-25" in pivot.columns:
+        pivot["Change"] = pivot["2024-25"] - pivot["2023-24"]
+        pivot["Change %"] = (pivot["Change"] / pivot["2023-24"].abs() * 100).round(1)
+
+    st.caption("National medians across all active institutions reporting each metric.")
+    st.dataframe(
+        pivot.style.format({
+            "2023-24": lambda v: f"{v:,.1f}" if pd.notna(v) else "—",
+            "2024-25": lambda v: f"{v:,.1f}" if pd.notna(v) else "—",
+            "Change":  lambda v: f"{v:+,.1f}" if pd.notna(v) else "—",
+            "Change %": lambda v: f"{v:+.1f}%" if pd.notna(v) else "—",
+        }).background_gradient(subset=["Change"], cmap="RdYlGn", vmin=-5, vmax=5),
+        use_container_width=True,
+    )
+
+    # ── Side-by-side bar charts for key metrics ────────────────────────────────
+    st.divider()
+    c1, c2 = st.columns(2)
+    with c1:
+        gr_df = trend_df.dropna(subset=["GRRTTOT"]).groupby(["YEAR","CONTROL_LBL"])["GRRTTOT"].median().reset_index()
+        gr_df.columns = ["Year","Control","Median Grad Rate %"]
+        fig = px.bar(gr_df, x="Control", y="Median Grad Rate %", color="Year",
+                     barmode="group", title="Median Grad Rate 150% by Control",
+                     color_discrete_sequence=["#60A5FA","#1D4ED8"])
+        fig.update_layout(height=360, legend_title="", xaxis_title="")
+        st.plotly_chart(fig, use_container_width=True)
+    with c2:
+        ret_df = trend_df.dropna(subset=["RET_PCF"]).groupby(["YEAR","CONTROL_LBL"])["RET_PCF"].median().reset_index()
+        ret_df.columns = ["Year","Control","Median Retention %"]
+        fig = px.bar(ret_df, x="Control", y="Median Retention %", color="Year",
+                     barmode="group", title="Median FT Retention Rate by Control",
+                     color_discrete_sequence=["#60A5FA","#1D4ED8"])
+        fig.update_layout(height=360, legend_title="", xaxis_title="")
+        st.plotly_chart(fig, use_container_width=True)
+
+    c1, c2 = st.columns(2)
+    with c1:
+        enr_df = trend_df.dropna(subset=["ENRTOT"]).groupby(["YEAR","CONTROL_LBL"])["ENRTOT"].sum().reset_index()
+        enr_df.columns = ["Year","Control","Total Enrollment"]
+        fig = px.bar(enr_df, x="Control", y="Total Enrollment", color="Year",
+                     barmode="group", title="Total Enrollment by Control",
+                     color_discrete_sequence=["#60A5FA","#1D4ED8"])
+        fig.update_layout(height=360, legend_title="", xaxis_title="")
+        st.plotly_chart(fig, use_container_width=True)
+    with c2:
+        coa_df = trend_df.dropna(subset=["CINSON"]).groupby(["YEAR","CONTROL_LBL"])["CINSON"].median().reset_index()
+        coa_df.columns = ["Year","Control","Median In-State COA ($)"]
+        fig = px.bar(coa_df, x="Control", y="Median In-State COA ($)", color="Year",
+                     barmode="group", title="Median In-State COA by Control",
+                     color_discrete_sequence=["#60A5FA","#1D4ED8"])
+        fig.update_layout(height=360, legend_title="", xaxis_title="")
+        st.plotly_chart(fig, use_container_width=True)
+
+    # ── Institution-level year-over-year lookup ────────────────────────────────
+    st.divider()
+    st.subheader("Institution Year-over-Year Lookup")
+    st.caption("Search for any institution to see its metrics across both years.")
+    all_names = sorted(trend_df["INSTNM"].dropna().unique())
+    sel_inst = st.selectbox("Institution", ["— select —"] + all_names, key="trend_inst_sel")
+    if sel_inst and sel_inst != "— select —":
+        inst_df = trend_df[trend_df["INSTNM"] == sel_inst].sort_values("YEAR")
+        rows_out = []
+        for label, (col, _) in TREND_METRICS.items():
+            row = {"Metric": label}
+            for _, r in inst_df.iterrows():
+                row[r["YEAR"]] = r.get(col)
+            rows_out.append(row)
+        inst_pivot = pd.DataFrame(rows_out).set_index("Metric")
+        if "2023-24" in inst_pivot.columns and "2024-25" in inst_pivot.columns:
+            inst_pivot["Δ"] = inst_pivot["2024-25"] - inst_pivot["2023-24"]
+        st.dataframe(
+            inst_pivot.style.format(lambda v: f"{v:,.1f}" if pd.notna(v) else "—"),
+            use_container_width=True,
+        )
 
 
 # ── Page 2: Institution Profile ──────────────────────────────────────────────
@@ -4089,6 +4220,113 @@ def page_compare(df: pd.DataFrame, cohort_groups: dict):
 
 
 # ── Page 4: Albion College Analysis ─────────────────────────────────────────
+def _albion_trends_tab(alb_current, peers_current, peer_label: str, cohort_groups: dict, sel: str):
+    """📈 Trends tab inside Albion Analysis — year-over-year view."""
+    st.subheader(f"Albion College — Year-over-Year vs. {peer_label}")
+    st.caption("Compares 2023-24 (Final) and 2024-25 (Provisional) IPEDS data.")
+
+    trend_df = load_trends()
+    alb_trend = trend_df[trend_df["INSTNM"].str.contains("Albion College", case=False, na=False)].sort_values("YEAR")
+
+    if alb_trend.empty:
+        st.warning("Albion College trend data not found in METRICS_LONG.")
+        return
+
+    BUILTIN = {
+        "All Private Non-Profit (national)": "builtin_np",
+        "Small Private NP — under 5,000 students": "builtin_size",
+    }
+    if sel in BUILTIN:
+        if BUILTIN[sel] == "builtin_np":
+            peer_trend = trend_df[trend_df["CONTROL"] == 2]
+        else:
+            peer_trend = trend_df[(trend_df["CONTROL"] == 2) & (trend_df["INSTSIZE"].isin([1, 2]))]
+    else:
+        uid_list = cohort_groups.get(sel, [])
+        peer_trend = trend_df[trend_df["UNITID"].isin(uid_list)]
+    peer_trend = peer_trend[~peer_trend["INSTNM"].str.contains("Albion College", case=False, na=False)]
+
+    METRICS = [
+        ("Grad Rate 150% (%)",    "GRRTTOT",      True,  "{:.1f}%"),
+        ("FT Retention Rate (%)", "RET_PCF",       True,  "{:.1f}%"),
+        ("Acceptance Rate (%)",   "DVADM01",       False, "{:.1f}%"),
+        ("% Receiving Pell",      "PGRNT_P",       True,  "{:.1f}%"),
+        ("In-State COA ($)",      "CINSON",        False, "${:,.0f}"),
+        ("Avg Faculty Salary ($)","SALTOTL",       True,  "${:,.0f}"),
+        ("Total Enrollment",      "ENRTOT",        True,  "{:,.0f}"),
+        ("8-yr Award Rate (%)",   "OM1TOTLAWDP8",  True,  "{:.1f}%"),
+        ("Student:Faculty Ratio", "STUFACR",       False, "{:.1f}"),
+    ]
+
+    # ── Change table ──────────────────────────────────────────────────────────
+    tbl_rows = []
+    for label, col, higher_better, fmt_str in METRICS:
+        row = {"Metric": label}
+        for yr in ["2023-24", "2024-25"]:
+            alb_val = alb_trend[alb_trend["YEAR"] == yr][col].values
+            peer_sub = peer_trend[peer_trend["YEAR"] == yr][col].dropna()
+            alb_v = float(alb_val[0]) if len(alb_val) and pd.notna(alb_val[0]) else None
+            peer_med = float(peer_sub.median()) if not peer_sub.empty else None
+            row[f"Albion {yr}"] = fmt_str.format(alb_v) if alb_v is not None else "—"
+            row[f"Peers {yr}"] = fmt_str.format(peer_med) if peer_med is not None else "—"
+        # Delta Albion
+        try:
+            v_new = float(alb_trend[alb_trend["YEAR"] == "2024-25"][col].values[0])
+            v_old = float(alb_trend[alb_trend["YEAR"] == "2023-24"][col].values[0])
+            delta = v_new - v_old
+            row["Albion Δ"] = f"{delta:+.1f}"
+        except Exception:
+            row["Albion Δ"] = "—"
+        tbl_rows.append(row)
+
+    tbl = pd.DataFrame(tbl_rows).set_index("Metric")
+    st.dataframe(tbl, use_container_width=True)
+
+    # ── Line charts: Albion vs peer median ────────────────────────────────────
+    st.divider()
+    st.subheader("Trend Charts — Albion vs. Peer Median")
+    years = ["2023-24", "2024-25"]
+
+    chart_metrics = [m for m in METRICS if m[1] in ["GRRTTOT","RET_PCF","ENRTOT","CINSON","SALTOTL","PGRNT_P"]]
+    cols = st.columns(2)
+    for i, (label, col, _, fmt_str) in enumerate(chart_metrics):
+        alb_vals = [
+            alb_trend[alb_trend["YEAR"] == yr][col].values
+            for yr in years
+        ]
+        alb_pts = [float(v[0]) if len(v) and pd.notna(v[0]) else None for v in alb_vals]
+        peer_pts = [
+            float(peer_trend[peer_trend["YEAR"] == yr][col].dropna().median())
+            if not peer_trend[peer_trend["YEAR"] == yr][col].dropna().empty else None
+            for yr in years
+        ]
+
+        fig = go.Figure()
+        # Peer median line
+        fig.add_trace(go.Scatter(
+            x=years, y=peer_pts, mode="lines+markers",
+            name=f"Peer Median ({peer_label})",
+            line=dict(color="#6B7280", width=2, dash="dash"),
+            marker=dict(size=8),
+        ))
+        # Albion line
+        fig.add_trace(go.Scatter(
+            x=years, y=alb_pts, mode="lines+markers+text",
+            name="Albion College",
+            line=dict(color="#F59E0B", width=3),
+            marker=dict(size=12, symbol="star", color="#F59E0B",
+                        line=dict(color="#92400E", width=2)),
+            text=[fmt_str.format(v) if v is not None else "" for v in alb_pts],
+            textposition="top center",
+        ))
+        fig.update_layout(
+            title=label, height=300, legend=dict(orientation="h", y=-0.25),
+            margin=dict(l=0, r=0, t=40, b=0),
+            yaxis_title=label,
+        )
+        cols[i % 2].plotly_chart(fig, use_container_width=True)
+
+
 def page_albion(df: pd.DataFrame, cohort_groups: dict):
     st.title("Albion College — Strategic Performance Analysis")
 
@@ -4348,7 +4586,7 @@ most actionable benchmark for strategic planning.
 
     # ── Deep-dive analysis sections ───────────────────────────────────────────
     st.subheader("Deep-Dive Analysis by Domain")
-    d1, d2, d3, d4 = st.tabs(["Student Success", "Equity & Access", "Costs & Value", "Faculty & Resources"])
+    d1, d2, d3, d4, d5 = st.tabs(["Student Success", "Equity & Access", "Costs & Value", "Faculty & Resources", "📈 Trends"])
 
     # ── Tab: Student Success ──────────────────────────────────────────────────
     with d1:
@@ -4716,6 +4954,9 @@ most actionable benchmark for strategic planning.
             )
         if lines:
             st.markdown("\n".join(lines))
+
+    with d5:
+        _albion_trends_tab(alb, peers, peer_label, cohort_groups, sel)
 
     st.divider()
     # ── Summary recommendation box ────────────────────────────────────────────
