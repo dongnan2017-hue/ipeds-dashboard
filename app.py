@@ -2060,9 +2060,10 @@ def _page_overview_trends(cohort_groups: dict | None = None):
                 n_insts = lookup_df["UNITID"].nunique()
                 st.caption(f"**{n_insts}** institutions in **{sel_grp}** found across both years.")
 
-    # ── Cohort change summary table (when a group is selected) ────────────────
-    if sel_grp != "All institutions" and not lookup_df.empty:
-        st.caption("Both years and change (Δ) for every institution in the selected cohort. "
+    # ── Summary table: all institutions in scope ──────────────────────────────
+    if not lookup_df.empty:
+        n_label = f"**{sel_grp}**" if sel_grp != "All institutions" else "all institutions"
+        st.caption(f"Both years and Δ for {n_label}. "
                    "Click any column header to sort. Green Δ = improved, red Δ = declined.")
 
         METRIC_SHORT = {
@@ -2119,13 +2120,12 @@ def _page_overview_trends(cohort_groups: dict | None = None):
             for c in val_cols:
                 fmt[c] = lambda v: f"{v:,.1f}" if pd.notna(v) else "—"
             fmt["State"] = lambda v: str(v) if pd.notna(v) else "—"
-            st.dataframe(
-                sum_df.style
-                      .apply(_highlight_albion, axis=1)
-                      .map(_delta_color, subset=delta_cols)
-                      .format(fmt),
-                use_container_width=True, height=520,
-            )
+            # Skip row-level styling for large result sets (>200 rows) to keep rendering fast
+            styled = sum_df.style.map(_delta_color, subset=delta_cols).format(fmt)
+            if len(sum_df) <= 200:
+                styled = styled.apply(_highlight_albion, axis=1)
+            tbl_height = min(520 + max(0, len(sum_df) - 20) * 4, 800)
+            st.dataframe(styled, use_container_width=True, height=tbl_height)
         st.divider()
 
     # ── Single-institution detail ──────────────────────────────────────────────
