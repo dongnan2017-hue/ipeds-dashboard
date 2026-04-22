@@ -56,51 +56,48 @@ def _ensure_db() -> None:
 
     import requests
 
+    # Google's newer reliable direct-download endpoint (bypasses the virus-scan page)
+    DOWNLOAD_URLS = [
+        f"https://drive.usercontent.google.com/download?id={gdrive_id}&export=download&authuser=0&confirm=t",
+        f"https://drive.google.com/uc?export=download&id={gdrive_id}&confirm=t",
+    ]
+
     with st.spinner("Downloading database from Google Drive (first run — ~30 s)…"):
-        # Step 1: initial request to get the download warning confirmation token
-        session = requests.Session()
-        url = f"https://drive.google.com/uc?export=download&id={gdrive_id}"
-        resp = session.get(url, stream=True, timeout=30)
-
-        # Step 2: Google returns a confirmation page for large files — extract token
-        confirm_token = None
-        for key, val in resp.cookies.items():
-            if key.startswith("download_warning"):
-                confirm_token = val
-                break
-
-        # Also check response content for newer-style confirmation
-        if not confirm_token and b"confirm=" in resp.content[:2048]:
-            import re
-            m = re.search(rb'confirm=([0-9A-Za-z_\-]+)', resp.content[:2048])
-            if m:
-                confirm_token = m.group(1).decode()
-
-        if confirm_token:
-            url = f"https://drive.google.com/uc?export=download&id={gdrive_id}&confirm={confirm_token}"
-            resp = session.get(url, stream=True, timeout=60)
-
-        # Step 3: stream to disk
         tmp_path = DB_PATH + ".tmp"
-        try:
-            with open(tmp_path, "wb") as f:
-                for chunk in resp.iter_content(chunk_size=1024 * 1024):
-                    if chunk:
-                        f.write(chunk)
-            # Verify the download looks like a real DuckDB file (not an HTML error page)
-            size_mb = os.path.getsize(tmp_path) / 1024 / 1024
-            if size_mb < 1:
-                os.remove(tmp_path)
-                st.error(
-                    f"Download failed — only {size_mb:.1f} MB received (expected ~162 MB). "
-                    "Check that the Google Drive file is shared as **'Anyone with the link'**."
-                )
-                st.stop()
-            os.rename(tmp_path, DB_PATH)
-        except Exception as exc:
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
-            st.error(f"Download error: {exc}")
+        downloaded = False
+
+        for url in DOWNLOAD_URLS:
+            try:
+                resp = requests.get(url, stream=True, timeout=120,
+                                    headers={"User-Agent": "Mozilla/5.0"})
+                if resp.status_code != 200:
+                    continue
+                with open(tmp_path, "wb") as f:
+                    for chunk in resp.iter_content(chunk_size=1024 * 1024):
+                        if chunk:
+                            f.write(chunk)
+                size_mb = os.path.getsize(tmp_path) / 1024 / 1024
+                if size_mb >= 10:          # real DB is ~162 MB; HTML error pages are <1 MB
+                    os.rename(tmp_path, DB_PATH)
+                    downloaded = True
+                    break
+                else:
+                    os.remove(tmp_path)    # got an HTML page, try next URL
+            except Exception:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+
+        if not downloaded:
+            st.error(
+                "### Database download failed\n\n"
+                "**Most likely cause:** the file is not shared publicly.\n\n"
+                "**Fix:**\n"
+                "1. Open Google Drive → right-click `ipeds.duckdb` → **Share**\n"
+                "2. Change access to **Anyone with the link** → **Viewer**\n"
+                "3. Copy the new link — the File ID is the long string between `/d/` and `/view`\n"
+                "4. Update `GDRIVE_DB_ID` in your Streamlit Cloud **Secrets** settings\n"
+                "5. Reboot the app from the Streamlit Cloud dashboard"
+            )
             st.stop()
 
 st.set_page_config(
