@@ -1955,8 +1955,10 @@ def _scatter_explorer(df: pd.DataFrame):
                                     x_var, y_var, z_var, chart_idx)
 
 
-def _page_overview_trends():
+def _page_overview_trends(cohort_groups: dict | None = None):
     """National year-over-year trends section."""
+    if cohort_groups is None:
+        cohort_groups = load_cohort()
     st.subheader("National Trends — 2023-24 vs 2024-25")
     trend_df = load_trends()
 
@@ -2039,12 +2041,81 @@ def _page_overview_trends():
         fig.update_layout(height=360, legend_title="", xaxis_title="")
         st.plotly_chart(fig, use_container_width=True)
 
-    # ── Institution-level year-over-year lookup ────────────────────────────────
+    # ── Institution Year-over-Year Lookup ─────────────────────────────────────
     st.divider()
     st.subheader("Institution Year-over-Year Lookup")
-    st.caption("Search for any institution to see its metrics across both years.")
-    all_names = sorted(trend_df["INSTNM"].dropna().unique())
-    sel_inst = st.selectbox("Institution", ["— select —"] + all_names, key="trend_inst_sel")
+
+    # ── Cohort group filter ───────────────────────────────────────────────────
+    lookup_df = trend_df
+    sel_grp = "All institutions"
+    if cohort_groups:
+        gc1, gc2 = st.columns([3, 5])
+        with gc1:
+            grp_options = ["All institutions"] + sorted(cohort_groups.keys())
+            sel_grp = st.selectbox("Filter by cohort group", grp_options, key="yoy_grp_sel")
+        if sel_grp != "All institutions":
+            uid_set = set(cohort_groups[sel_grp])
+            lookup_df = trend_df[trend_df["UNITID"].isin(uid_set)]
+            with gc2:
+                n_insts = lookup_df["UNITID"].nunique()
+                st.caption(f"**{n_insts}** institutions in **{sel_grp}** found across both years.")
+
+    # ── Cohort change summary table (when a group is selected) ────────────────
+    if sel_grp != "All institutions" and not lookup_df.empty:
+        st.caption("Year-over-year change for every institution in the selected cohort. "
+                   "Green = improved, red = declined.")
+
+        def _delta_color(v):
+            if pd.isna(v):
+                return ""
+            return "color:#059669;font-weight:bold" if v > 0 else (
+                   "color:#DC2626;font-weight:bold" if v < 0 else "")
+
+        def _highlight_albion(r):
+            if "Albion College" in str(r.name):
+                return ["background-color:#FDE68A;color:#78350F;font-weight:bold"] * len(r)
+            return [""] * len(r)
+
+        summary_rows = []
+        for uid in sorted(lookup_df["UNITID"].unique()):
+            r24 = lookup_df[(lookup_df["UNITID"] == uid) & (lookup_df["YEAR"] == "2024-25")]
+            r23 = lookup_df[(lookup_df["UNITID"] == uid) & (lookup_df["YEAR"] == "2023-24")]
+            if r24.empty and r23.empty:
+                continue
+            ref = r24.iloc[0] if not r24.empty else r23.iloc[0]
+            row = {"State": ref.get("STABBR", "")}
+            for label, (col, higher_better) in TREND_METRICS.items():
+                v24 = float(r24.iloc[0][col]) if not r24.empty and pd.notna(r24.iloc[0].get(col)) else None
+                v23 = float(r23.iloc[0][col]) if not r23.empty and pd.notna(r23.iloc[0].get(col)) else None
+                short = label.replace(" (%)", "").replace(" ($)", "").replace("Avg ", "").replace("Student:", "Stu:")
+                row[f"{short} (25)"] = v24
+                row[f"{short} Δ"] = (v24 - v23) if v24 is not None and v23 is not None else None
+            summary_rows.append((ref.get("INSTNM", str(uid)), row))
+
+        if summary_rows:
+            sum_df = pd.DataFrame(
+                [r for _, r in summary_rows],
+                index=[name for name, _ in summary_rows],
+            )
+            sum_df.index.name = "Institution"
+            delta_cols = [c for c in sum_df.columns if c.endswith(" Δ")]
+            val_cols   = [c for c in sum_df.columns if c.endswith(" (25)")]
+            fmt = {c: (lambda v: f"{v:+.1f}" if pd.notna(v) else "—") for c in delta_cols}
+            fmt.update({c: (lambda v: f"{v:,.1f}" if pd.notna(v) else "—") for c in val_cols})
+            fmt["State"] = lambda v: str(v) if pd.notna(v) else "—"
+            st.dataframe(
+                sum_df.style
+                      .apply(_highlight_albion, axis=1)
+                      .map(_delta_color, subset=delta_cols)
+                      .format(fmt),
+                use_container_width=True, height=480,
+            )
+        st.divider()
+
+    # ── Single-institution detail ──────────────────────────────────────────────
+    st.caption("Pick one institution for a full metric breakdown across both years.")
+    inst_names = sorted(lookup_df["INSTNM"].dropna().unique())
+    sel_inst = st.selectbox("Institution", ["— select —"] + inst_names, key="trend_inst_sel")
     if sel_inst and sel_inst != "— select —":
         inst_df = trend_df[trend_df["INSTNM"] == sel_inst].sort_values("YEAR")
         rows_out = []
@@ -2056,8 +2127,17 @@ def _page_overview_trends():
         inst_pivot = pd.DataFrame(rows_out).set_index("Metric")
         if "2023-24" in inst_pivot.columns and "2024-25" in inst_pivot.columns:
             inst_pivot["Δ"] = inst_pivot["2024-25"] - inst_pivot["2023-24"]
+
+        def _color_delta_cell(v):
+            if pd.isna(v):
+                return ""
+            return "color:#059669;font-weight:bold" if v > 0 else (
+                   "color:#DC2626;font-weight:bold" if v < 0 else "")
+
         st.dataframe(
-            inst_pivot.style.format(lambda v: f"{v:,.1f}" if pd.notna(v) else "—"),
+            inst_pivot.style
+                      .map(_color_delta_cell, subset=["Δ"] if "Δ" in inst_pivot.columns else [])
+                      .format(lambda v: f"{v:,.1f}" if pd.notna(v) else "—"),
             use_container_width=True,
         )
 
@@ -4443,7 +4523,7 @@ def page_trends(cohort_groups: dict):
     t1, t2 = st.tabs(["National Trends", "Albion College Trends"])
 
     with t1:
-        _page_overview_trends()
+        _page_overview_trends(cohort_groups)
 
     with t2:
         # ── Peer group selector (self-contained) ──────────────────────────────
