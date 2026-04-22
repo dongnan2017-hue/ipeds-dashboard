@@ -4394,27 +4394,39 @@ def page_trends(cohort_groups: dict):
             key="yt_grp",
         )
     with sc2:
-        # Build hierarchical options: built-ins, then each cohort group
-        # followed by its individual schools (indented with "   ↳ ")
-        _SCHOOL_PFX = "   ↳ "   # "   ↳ "
-        _GROUP_PFX  = "\U0001f4ca "  # "📊 "
-        peer_options = list(BUILTIN.keys())
-        for _grp in sorted(cohort_groups.keys()):
-            peer_options.append(f"{_GROUP_PFX}{_grp}")
-            _guids = cohort_groups.get(_grp, [])
-            _gschools = (
-                trend_df[trend_df["UNITID"].isin(_guids)][["UNITID","INSTNM"]]
-                .drop_duplicates("UNITID").dropna(subset=["INSTNM"])
-                .sort_values("INSTNM")["INSTNM"].tolist()
-            )
-            for _s in _gschools:
-                peer_options.append(f"{_SCHOOL_PFX}{_s}")
-
-        sel_peer_raw = st.selectbox(
-            "Compare Albion against",
-            peer_options,
+        sel_peer_grp = st.selectbox(
+            "Compare Albion against (group)",
+            list(BUILTIN.keys()) + sorted(cohort_groups.keys()),
             key="yt_peer",
         )
+
+    # Second row: individual school selector — always two columns, always visible
+    ss1, ss2 = st.columns(2)
+    with ss1:
+        # Build school list: from sel_peer_grp if it's a cohort, else all cohorts
+        if sel_peer_grp not in BUILTIN:
+            _pool = cohort_groups.get(sel_peer_grp, [])
+        else:
+            _pool = [uid for uids in cohort_groups.values() for uid in uids]
+        # Build uid→name lookup so we filter by UNITID (not string matching)
+        _school_rows = (
+            trend_df[trend_df["UNITID"].isin(_pool)][["UNITID", "INSTNM"]]
+            .drop_duplicates("UNITID").dropna(subset=["INSTNM"])
+            .sort_values("INSTNM")
+        )
+        _uid_by_name  = {str(r["INSTNM"]): int(r["UNITID"]) for _, r in _school_rows.iterrows()}
+        _school_names = list(_uid_by_name.keys())
+        sel_school = st.selectbox(
+            "Or compare 1-on-1 vs. one school:",
+            ["— use group median —"] + _school_names,
+            key="yt_school",
+        )
+    with ss2:
+        use_single = sel_school != "— use group median —"
+        if use_single:
+            st.info(f"1-on-1 mode: **{sel_school}**  \nAlbion tab compares directly against this school.")
+        else:
+            st.info("Group mode: Albion tab compares against the group median.")
 
     # ── Derived DataFrames ────────────────────────────────────────────────────
     # National tab scope
@@ -4426,27 +4438,24 @@ def page_trends(cohort_groups: dict):
     # Albion tab: Albion rows
     alb_df = trend_df[trend_df["INSTNM"].str.contains("Albion College", case=False, na=False)].sort_values("YEAR")
 
-    # Albion tab: decode sel_peer_raw into peer_df + labels
-    if sel_peer_raw in BUILTIN:
-        use_single = False
-        peer_label = sel_peer_raw
+    # Albion tab: peer rows — use UNITID lookup, never string matching
+    if use_single:
+        _sel_uid = _uid_by_name[sel_school]
+        peer_df  = trend_df[trend_df["UNITID"] == _sel_uid]
+        peer_label    = sel_school
+        peer_line_name = sel_school
+    elif BUILTIN.get(sel_peer_grp) == "builtin_np":
+        peer_df  = trend_df[trend_df["CONTROL"] == 2]
+        peer_label    = sel_peer_grp
         peer_line_name = "Peer Median"
-        if BUILTIN[sel_peer_raw] == "builtin_np":
-            peer_df = trend_df[trend_df["CONTROL"] == 2]
-        else:
-            peer_df = trend_df[(trend_df["CONTROL"] == 2) & (trend_df["INSTSIZE"].isin([1, 2]))]
-    elif sel_peer_raw.startswith(_SCHOOL_PFX):
-        use_single = True
-        school_name = sel_peer_raw[len(_SCHOOL_PFX):]
-        peer_label = school_name
-        peer_line_name = school_name
-        peer_df = trend_df[trend_df["INSTNM"] == school_name]
+    elif BUILTIN.get(sel_peer_grp) == "builtin_size":
+        peer_df  = trend_df[(trend_df["CONTROL"] == 2) & (trend_df["INSTSIZE"].isin([1, 2]))]
+        peer_label    = sel_peer_grp
+        peer_line_name = "Peer Median"
     else:
-        use_single = False
-        grp_name = sel_peer_raw[len(_GROUP_PFX):]
-        peer_label = grp_name
+        peer_df  = trend_df[trend_df["UNITID"].isin(cohort_groups.get(sel_peer_grp, []))]
+        peer_label    = sel_peer_grp
         peer_line_name = "Peer Median"
-        peer_df = trend_df[trend_df["UNITID"].isin(cohort_groups.get(grp_name, []))]
     peer_df = peer_df[~peer_df["INSTNM"].str.contains("Albion College", case=False, na=False)]
 
     # ── TABS ──────────────────────────────────────────────────────────────────
