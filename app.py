@@ -1933,7 +1933,7 @@ def _page_overview_trends(df_current: pd.DataFrame):
             "2024-25":  lambda v: f"{v:,.1f}" if pd.notna(v) else "—",
             "Change":   lambda v: f"{v:+,.1f}" if pd.notna(v) else "—",
             "Change %": lambda v: f"{v:+.1f}%" if pd.notna(v) else "—",
-        }).applymap(_color_change, subset=["Change"]),
+        }).map(_color_change, subset=["Change"]),
         use_container_width=True,
     )
 
