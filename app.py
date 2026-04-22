@@ -2128,7 +2128,7 @@ def _page_overview_trends(cohort_groups: dict | None = None):
             st.dataframe(styled, use_container_width=True, height=tbl_height)
         st.divider()
 
-    # ── Per-institution detail ────────────────────────────────────────────────
+    # ── Per-institution detail ─────────────────────────────────────────────────
     def _render_inst_pivot(inst_name: str):
         inst_df = trend_df[trend_df["INSTNM"] == inst_name].sort_values("YEAR")
         rows_out = []
@@ -2151,21 +2151,24 @@ def _page_overview_trends(cohort_groups: dict | None = None):
             use_container_width=True,
         )
 
-    st.subheader("Individual Institution Breakdown")
+    # ── Search: always available, searches all institutions ───────────────────
+    st.subheader("Institution Year-over-Year Lookup")
+    st.caption("Search for any institution to see its metrics across both years.")
+    all_inst_names = sorted(trend_df["INSTNM"].dropna().unique())
+    sel_inst = st.selectbox("Search institution", ["— select —"] + all_inst_names,
+                            key="trend_inst_sel")
+    if sel_inst and sel_inst != "— select —":
+        _render_inst_pivot(sel_inst)
+
+    # ── Each institution in the cohort ────────────────────────────────────────
     if sel_grp != "All institutions":
-        # Show every institution in the cohort as a collapsible section
-        inst_names = sorted(lookup_df["INSTNM"].dropna().unique())
-        for name in inst_names:
+        st.divider()
+        st.subheader(f"Each Institution — {sel_grp}")
+        cohort_names = sorted(lookup_df["INSTNM"].dropna().unique())
+        for name in cohort_names:
             is_albion = "Albion College" in name
             with st.expander(name, expanded=is_albion):
                 _render_inst_pivot(name)
-    else:
-        # All institutions: use a dropdown to pick one
-        inst_names = sorted(lookup_df["INSTNM"].dropna().unique())
-        sel_inst = st.selectbox("Search for an institution", ["— select —"] + inst_names,
-                                key="trend_inst_sel")
-        if sel_inst and sel_inst != "— select —":
-            _render_inst_pivot(sel_inst)
 
 
 # ── Page 2: Institution Profile ──────────────────────────────────────────────
