@@ -4400,25 +4400,35 @@ def page_trends(cohort_groups: dict):
             key="yt_peer",
         )
 
-    # Build school list outside any column — from sel_peer_grp if cohort, else all cohorts
-    if sel_peer_grp not in BUILTIN:
+    # Build school list — only when a cohort group is selected (not built-ins)
+    _builtin_selected = sel_peer_grp in BUILTIN
+    if not _builtin_selected:
         _pool = cohort_groups.get(sel_peer_grp, [])
+        _school_rows = (
+            trend_df[trend_df["UNITID"].isin(_pool)][["UNITID", "INSTNM"]]
+            .drop_duplicates("UNITID").dropna(subset=["INSTNM"])
+            .sort_values("INSTNM")
+        )
+        # Exclude Albion College from peer picker
+        _school_rows = _school_rows[
+            ~_school_rows["INSTNM"].str.contains("Albion College", case=False, na=False)
+        ]
+        _uid_by_name  = {str(r["INSTNM"]): int(r["UNITID"]) for _, r in _school_rows.iterrows()}
+        _school_names = list(_uid_by_name.keys())
     else:
-        _pool = [uid for uids in cohort_groups.values() for uid in uids]
-    _school_rows = (
-        trend_df[trend_df["UNITID"].isin(_pool)][["UNITID", "INSTNM"]]
-        .drop_duplicates("UNITID").dropna(subset=["INSTNM"])
-        .sort_values("INSTNM")
-    )
-    _uid_by_name  = {str(r["INSTNM"]): int(r["UNITID"]) for _, r in _school_rows.iterrows()}
-    _school_names = list(_uid_by_name.keys())
+        _uid_by_name  = {}
+        _school_names = []
 
     # Full-width school selector — always visible, no column wrapper
-    sel_school = st.selectbox(
-        "Or compare Albion 1-on-1 vs. one school:",
-        ["— use group median —"] + _school_names,
-        key="yt_school",
-    )
+    if _builtin_selected:
+        st.info("Select a cohort group in "Compare Albion against" to enable 1-on-1 school comparison.")
+        sel_school = "— use group median —"
+    else:
+        sel_school = st.selectbox(
+            "Or compare Albion 1-on-1 vs. one school:",
+            ["— use group median —"] + _school_names,
+            key="yt_school",
+        )
     use_single = sel_school != "— use group median —"
 
     # ── Derived DataFrames ────────────────────────────────────────────────────
