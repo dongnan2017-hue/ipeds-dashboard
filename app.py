@@ -346,13 +346,35 @@ def load_master() -> pd.DataFrame:
         LEFT JOIN DRVOM2024      om   ON h.UNITID = om.UNITID
         LEFT JOIN DRVAL2024      lib  ON h.UNITID = lib.UNITID
     """).df()
+    def _make_map(varname: str) -> dict:
+        rows = con.execute(
+            f"SELECT CODEVALUE, VALUELABEL FROM META_VALUES "
+            f"WHERE upper(VARNAME)='{varname.upper()}'"
+        ).fetchall()
+        return {int(r[0]): r[1] for r in rows if r[0] is not None}
+
+    carnegie_ic_map   = _make_map("CARNEGIEIC")
+    carnegie_rsch_map = _make_map("CARNEGIERSCH")
+    carnegie_size_map = _make_map("CARNEGIESIZE")
+    carnegie_alf_map  = _make_map("CARNEGIEALF")
+    instsize_map      = _make_map("INSTSIZE")
+    obereg_map        = _make_map("OBEREG")
+    hloffer_map       = _make_map("HLOFFER")
+
     con.close()
 
-    df["SECTOR_LBL"]  = df["SECTOR"].map(SECTOR_MAP).fillna("Not available")
-    df["CONTROL_LBL"] = df["CONTROL"].map(CONTROL_MAP).fillna("Not available")
-    df["LEVEL_LBL"]   = df["ICLEVEL"].map(LEVEL_MAP).fillna("Not available")
-    df["LOCALE_LBL"]  = df["LOCALE"].map(LOCALE_MAP).fillna("Not available")
-    df["DISPLAY_NAME"] = df["INSTNM"] + " (" + df["STABBR"] + ")"
+    df["SECTOR_LBL"]       = df["SECTOR"].map(SECTOR_MAP).fillna("Not available")
+    df["CONTROL_LBL"]      = df["CONTROL"].map(CONTROL_MAP).fillna("Not available")
+    df["LEVEL_LBL"]        = df["ICLEVEL"].map(LEVEL_MAP).fillna("Not available")
+    df["LOCALE_LBL"]       = df["LOCALE"].map(LOCALE_MAP).fillna("Not available")
+    df["CARNEGIE_LBL"]     = df["CARNEGIEIC"].map(carnegie_ic_map).fillna("Not classified")
+    df["CARNEGIERSCH_LBL"] = df["CARNEGIERSCH"].map(carnegie_rsch_map).fillna("Not classified")
+    df["CARNEGIESIZE_LBL"] = df["CARNEGIESIZE"].map(carnegie_size_map).fillna("Not classified")
+    df["CARNEGIEALF_LBL"]  = df["CARNEGIEALF"].map(carnegie_alf_map).fillna("Not classified")
+    df["INSTSIZE_LBL"]     = df["INSTSIZE"].map(instsize_map).fillna("Not available")
+    df["OBEREG_LBL"]       = df["OBEREG"].map(obereg_map).fillna("Not available")
+    df["HLOFFER_LBL"]      = df["HLOFFER"].map(hloffer_map).fillna("Not available")
+    df["DISPLAY_NAME"]     = df["INSTNM"] + " (" + df["STABBR"] + ")"
     return df
 
 
@@ -445,6 +467,21 @@ def apply_filters(df: pd.DataFrame, cohort_groups: dict) -> tuple:
         df = df[df["HBCU"] == 1]
     if st.sidebar.checkbox("Tribal college only"):
         df = df[df["TRIBAL"] == 1]
+
+    regions = sorted(df["OBEREG_LBL"].dropna().unique())
+    sel_reg = st.sidebar.multiselect("Geographic Region", regions)
+    if sel_reg:
+        df = df[df["OBEREG_LBL"].isin(sel_reg)]
+
+    sizes = sorted(df["INSTSIZE_LBL"].dropna().unique())
+    sel_sz = st.sidebar.multiselect("Institution Size", sizes)
+    if sel_sz:
+        df = df[df["INSTSIZE_LBL"].isin(sel_sz)]
+
+    carnegies = sorted(df["CARNEGIE_LBL"].dropna().unique())
+    sel_carn = st.sidebar.multiselect("Carnegie Classification", carnegies)
+    if sel_carn:
+        df = df[df["CARNEGIE_LBL"].isin(sel_carn)]
 
     max_enr = int(df["ENRTOT"].max(skipna=True)) if df["ENRTOT"].notna().any() else 100_000
     min_enr = st.sidebar.number_input("Min total enrollment", min_value=0, max_value=max_enr, value=0, step=100)
@@ -884,9 +921,12 @@ def page_overview(df: pd.DataFrame, sel_groups: list | None = None):
         st.subheader("Institution Directory")
         st.caption("Click a row, then press **View Profile →** to open the institution profile.")
         dir_df = df[["DISPLAY_NAME","INSTNM","CITY","STABBR","SECTOR_LBL",
+                      "CARNEGIE_LBL","INSTSIZE_LBL","OBEREG_LBL",
                       "ENRTOT","DVADM01","GRRTTOT","CINSON"]].rename(columns={
             "INSTNM":"Institution","CITY":"City","STABBR":"State",
-            "SECTOR_LBL":"Sector","ENRTOT":"Enrollment",
+            "SECTOR_LBL":"Sector","CARNEGIE_LBL":"Carnegie 2025",
+            "INSTSIZE_LBL":"Size","OBEREG_LBL":"Region",
+            "ENRTOT":"Enrollment",
             "DVADM01":"Accept %","GRRTTOT":"Grad Rate %","CINSON":"In-State COA"
         }).reset_index(drop=True)
         dir_event = st.dataframe(
@@ -966,6 +1006,61 @@ def page_overview(df: pd.DataFrame, sel_groups: list | None = None):
                          labels={"PCTFT1ST":"Median % FT First-time","SECTOR_LBL":""})
             fig.update_layout(showlegend=False, height=360, yaxis_title="")
             st.plotly_chart(fig, use_container_width=True)
+
+        c1, c2 = st.columns(2)
+        with c1:
+            carn_cnt = (df[df["CARNEGIE_LBL"] != "Not classified"]
+                        .groupby("CARNEGIE_LBL").size().reset_index(name="Count")
+                        .sort_values("Count"))
+            if not carn_cnt.empty:
+                fig = px.bar(carn_cnt, x="Count", y="CARNEGIE_LBL", orientation="h",
+                             title="Institution Count by Carnegie Classification 2025",
+                             labels={"CARNEGIE_LBL": ""})
+                fig.update_layout(height=500, showlegend=False, yaxis_title="",
+                                  margin=dict(l=0, r=30, t=40, b=0))
+                st.plotly_chart(fig, use_container_width=True)
+        with c2:
+            reg_cnt = (df[df["OBEREG_LBL"] != "Not available"]
+                       .groupby("OBEREG_LBL").size().reset_index(name="Count")
+                       .sort_values("Count"))
+            if not reg_cnt.empty:
+                fig = px.bar(reg_cnt, x="Count", y="OBEREG_LBL", orientation="h",
+                             title="Institution Count by Geographic Region",
+                             labels={"OBEREG_LBL": ""})
+                fig.update_layout(height=500, showlegend=False, yaxis_title="",
+                                  margin=dict(l=0, r=30, t=40, b=0))
+                st.plotly_chart(fig, use_container_width=True)
+
+        c1, c2 = st.columns(2)
+        with c1:
+            sz_cnt = (df[df["INSTSIZE_LBL"] != "Not available"]
+                      .groupby("INSTSIZE_LBL").size().reset_index(name="Count"))
+            if not sz_cnt.empty:
+                size_order = [
+                    "Under 1,000", "1,000 - 4,999", "5,000 - 9,999",
+                    "10,000 - 19,999", "20,000 and above",
+                ]
+                sz_cnt["_ord"] = sz_cnt["INSTSIZE_LBL"].apply(
+                    lambda x: next((i for i, s in enumerate(size_order) if s.lower() in x.lower()), 99)
+                )
+                sz_cnt = sz_cnt.sort_values("_ord").drop(columns="_ord")
+                fig = px.bar(sz_cnt, x="INSTSIZE_LBL", y="Count",
+                             title="Institutions by Enrollment Size Category",
+                             labels={"INSTSIZE_LBL": ""})
+                fig.update_layout(height=360, showlegend=False,
+                                  margin=dict(l=0, r=10, t=40, b=0))
+                st.plotly_chart(fig, use_container_width=True)
+        with c2:
+            hl_cnt = (df[df["HLOFFER_LBL"] != "Not available"]
+                      .groupby("HLOFFER_LBL").size().reset_index(name="Count")
+                      .sort_values("Count"))
+            if not hl_cnt.empty:
+                fig = px.bar(hl_cnt, x="Count", y="HLOFFER_LBL", orientation="h",
+                             title="Institutions by Highest Level Offered",
+                             labels={"HLOFFER_LBL": ""})
+                fig.update_layout(height=360, showlegend=False, yaxis_title="",
+                                  margin=dict(l=0, r=30, t=40, b=0))
+                st.plotly_chart(fig, use_container_width=True)
 
         st.divider()
         st.subheader("Institution-level Enrollment Data")
@@ -1853,10 +1948,14 @@ def page_profile(df: pd.DataFrame):
                     "Control":            row.get("CONTROL_LBL", ""),
                     "Sector":             row.get("SECTOR_LBL", ""),
                     "Locale":             row.get("LOCALE_LBL", ""),
+                    "Region":             row.get("OBEREG_LBL", ""),
+                    "Institution Size":   row.get("INSTSIZE_LBL", ""),
+                    "Highest Level":      row.get("HLOFFER_LBL", ""),
                     "Degree-granting":    "Yes" if row.get("DEGGRANT") == 1 else "No",
-                    "Carnegie 2025 IC":   val_label(con, "CARNEGIEIC",   row.get("CARNEGIEIC")),
-                    "Carnegie Research":  val_label(con, "CARNEGIERSCH", row.get("CARNEGIERSCH")),
-                    "Carnegie Size":      val_label(con, "CARNEGIESIZE", row.get("CARNEGIESIZE")),
+                    "Carnegie 2025 IC":   row.get("CARNEGIE_LBL", ""),
+                    "Carnegie Research":  row.get("CARNEGIERSCH_LBL", ""),
+                    "Carnegie Size":      row.get("CARNEGIESIZE_LBL", ""),
+                    "Carnegie ALF":       row.get("CARNEGIEALF_LBL", ""),
                     "Land-grant":         yesno(row.get("LANDGRNT")),
                     "UNITID":             uid,
                 }
