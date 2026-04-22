@@ -4394,31 +4394,27 @@ def page_trends(cohort_groups: dict):
             key="yt_grp",
         )
     with sc2:
-        sel_peer = st.selectbox(
+        # Build hierarchical options: built-ins, then each cohort group
+        # followed by its individual schools (indented with "   ↳ ")
+        _SCHOOL_PFX = "   ↳ "   # "   ↳ "
+        _GROUP_PFX  = "\U0001f4ca "  # "📊 "
+        peer_options = list(BUILTIN.keys())
+        for _grp in sorted(cohort_groups.keys()):
+            peer_options.append(f"{_GROUP_PFX}{_grp}")
+            _guids = cohort_groups.get(_grp, [])
+            _gschools = (
+                trend_df[trend_df["UNITID"].isin(_guids)][["UNITID","INSTNM"]]
+                .drop_duplicates("UNITID").dropna(subset=["INSTNM"])
+                .sort_values("INSTNM")["INSTNM"].tolist()
+            )
+            for _s in _gschools:
+                peer_options.append(f"{_SCHOOL_PFX}{_s}")
+
+        sel_peer_raw = st.selectbox(
             "Compare Albion against",
-            list(BUILTIN.keys()) + sorted(cohort_groups.keys()),
+            peer_options,
             key="yt_peer",
         )
-
-    # School selector — always visible
-    if sel_peer not in BUILTIN:
-        pool_uids = set(cohort_groups.get(sel_peer, []))
-        school_lbl = f"Compare Albion 1-on-1 vs. one school from {sel_peer}:"
-    else:
-        pool_uids = {uid for uids in cohort_groups.values() for uid in uids}
-        school_lbl = "Compare Albion 1-on-1 vs. one school from any cohort:"
-
-    school_names = (
-        trend_df[trend_df["UNITID"].isin(pool_uids)][["UNITID", "INSTNM"]]
-        .drop_duplicates("UNITID").dropna(subset=["INSTNM"])
-        .sort_values("INSTNM")["INSTNM"].tolist()
-    )
-    sel_school = st.selectbox(
-        school_lbl,
-        ["— whole group median —"] + school_names,
-        key="yt_school",
-    )
-    use_single = sel_school != "— whole group median —"
 
     # ── Derived DataFrames ────────────────────────────────────────────────────
     # National tab scope
@@ -4430,23 +4426,27 @@ def page_trends(cohort_groups: dict):
     # Albion tab: Albion rows
     alb_df = trend_df[trend_df["INSTNM"].str.contains("Albion College", case=False, na=False)].sort_values("YEAR")
 
-    # Albion tab: peer rows
-    if use_single:
-        peer_df = trend_df[trend_df["INSTNM"] == sel_school]
-        peer_label = sel_school
-        peer_line_name = sel_school
-    elif BUILTIN.get(sel_peer) == "builtin_np":
-        peer_df = trend_df[trend_df["CONTROL"] == 2]
-        peer_label = sel_peer
-        peer_line_name = f"Peer Median"
-    elif BUILTIN.get(sel_peer) == "builtin_size":
-        peer_df = trend_df[(trend_df["CONTROL"] == 2) & (trend_df["INSTSIZE"].isin([1, 2]))]
-        peer_label = sel_peer
-        peer_line_name = f"Peer Median"
+    # Albion tab: decode sel_peer_raw into peer_df + labels
+    if sel_peer_raw in BUILTIN:
+        use_single = False
+        peer_label = sel_peer_raw
+        peer_line_name = "Peer Median"
+        if BUILTIN[sel_peer_raw] == "builtin_np":
+            peer_df = trend_df[trend_df["CONTROL"] == 2]
+        else:
+            peer_df = trend_df[(trend_df["CONTROL"] == 2) & (trend_df["INSTSIZE"].isin([1, 2]))]
+    elif sel_peer_raw.startswith(_SCHOOL_PFX):
+        use_single = True
+        school_name = sel_peer_raw[len(_SCHOOL_PFX):]
+        peer_label = school_name
+        peer_line_name = school_name
+        peer_df = trend_df[trend_df["INSTNM"] == school_name]
     else:
-        peer_df = trend_df[trend_df["UNITID"].isin(cohort_groups.get(sel_peer, []))]
-        peer_label = sel_peer
-        peer_line_name = f"Peer Median"
+        use_single = False
+        grp_name = sel_peer_raw[len(_GROUP_PFX):]
+        peer_label = grp_name
+        peer_line_name = "Peer Median"
+        peer_df = trend_df[trend_df["UNITID"].isin(cohort_groups.get(grp_name, []))]
     peer_df = peer_df[~peer_df["INSTNM"].str.contains("Albion College", case=False, na=False)]
 
     # ── TABS ──────────────────────────────────────────────────────────────────
