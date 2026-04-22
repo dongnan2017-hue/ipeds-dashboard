@@ -4446,7 +4446,7 @@ def page_compare(df: pd.DataFrame, cohort_groups: dict, year: str = "2024-25"):
 
 # ── Page 4: Albion College Analysis ─────────────────────────────────────────
 def _albion_trends_tab(alb_current, peers_current, peer_label: str, cohort_groups: dict, sel: str,
-                       _peer_trend_override=None):
+                       _peer_trend_override=None, _is_single_school=False):
     """Year-over-year Albion trends. _peer_trend_override lets page_trends inject pre-built peer data."""
     st.subheader(f"Albion College — Year-over-Year vs. {peer_label}")
     st.caption("Compares 2023-24 (Final) and 2024-25 (Provisional) IPEDS data.")
@@ -4487,6 +4487,8 @@ def _albion_trends_tab(alb_current, peers_current, peer_label: str, cohort_group
         ("Student:Faculty Ratio", "STUFACR",       False, "{:.1f}"),
     ]
 
+    peer_col = peer_label if _is_single_school else "Peers"
+
     # ── Change table ──────────────────────────────────────────────────────────
     tbl_rows = []
     for label, col, higher_better, fmt_str in METRICS:
@@ -4497,7 +4499,7 @@ def _albion_trends_tab(alb_current, peers_current, peer_label: str, cohort_group
             alb_v = float(alb_val[0]) if len(alb_val) and pd.notna(alb_val[0]) else None
             peer_med = float(peer_sub.median()) if not peer_sub.empty else None
             row[f"Albion {yr}"] = fmt_str.format(alb_v) if alb_v is not None else "—"
-            row[f"Peers {yr}"] = fmt_str.format(peer_med) if peer_med is not None else "—"
+            row[f"{peer_col} {yr}"] = fmt_str.format(peer_med) if peer_med is not None else "—"
         # Delta Albion
         try:
             v_new = float(alb_trend[alb_trend["YEAR"] == "2024-25"][col].values[0])
@@ -4511,9 +4513,10 @@ def _albion_trends_tab(alb_current, peers_current, peer_label: str, cohort_group
     tbl = pd.DataFrame(tbl_rows).set_index("Metric")
     st.dataframe(tbl, use_container_width=True)
 
-    # ── Line charts: Albion vs peer median ────────────────────────────────────
+    # ── Line charts: Albion vs peer ───────────────────────────────────────────
     st.divider()
-    st.subheader("Trend Charts — Albion vs. Peer Median")
+    comparison_lbl = peer_label if _is_single_school else "Peer Median"
+    st.subheader(f"Trend Charts — Albion vs. {comparison_lbl}")
     years = ["2023-24", "2024-25"]
 
     chart_metrics = [m for m in METRICS if m[1] in ["GRRTTOT","RET_PCF","ENRTOT","CINSON","SALTOTL","PGRNT_P"]]
@@ -4531,10 +4534,10 @@ def _albion_trends_tab(alb_current, peers_current, peer_label: str, cohort_group
         ]
 
         fig = go.Figure()
-        # Peer median line
+        # Peer line
         fig.add_trace(go.Scatter(
             x=years, y=peer_pts, mode="lines+markers",
-            name=f"Peer Median ({peer_label})",
+            name=peer_label if _is_single_school else f"Peer Median ({peer_label})",
             line=dict(color="#6B7280", width=2, dash="dash"),
             marker=dict(size=8),
         ))
@@ -4598,7 +4601,7 @@ def page_trends(cohort_groups: dict):
         "Small Private NP — under 5,000 students": "builtin_size",
     }
 
-    # ── Both selectors above the tabs so widget state is always reliable ───────
+    # ── Selectors above tabs so widget state is always reliable ──────────────
     fc1, fc2 = st.columns(2)
     with fc1:
         grp_options = ["All institutions"] + sorted(cohort_groups.keys())
@@ -4608,6 +4611,26 @@ def page_trends(cohort_groups: dict):
         sel_t = st.selectbox("Compare Albion against", cohort_options_t,
                              key="trends_albion_peer_sel")
 
+    # Optional: single institution from the selected cohort group
+    sel_inst_t = None
+    if sel_t not in BUILTIN_T:
+        group_uids = cohort_groups.get(sel_t, [])
+        group_names = (
+            trend_df[trend_df["UNITID"].isin(group_uids)][["UNITID", "INSTNM"]]
+            .drop_duplicates("UNITID")
+            .dropna(subset=["INSTNM"])
+            .sort_values("INSTNM")["INSTNM"]
+            .tolist()
+        )
+        inst_opts = ["— whole group (median) —"] + group_names
+        _sel_raw = st.selectbox(
+            f"Or pick one school from {sel_t}:",
+            inst_opts,
+            key="trends_single_inst_sel",
+        )
+        if _sel_raw != "— whole group (median) —":
+            sel_inst_t = _sel_raw
+
     # compute lookup_df (National Trends tab filter)
     if sel_grp != "All institutions":
         uid_set = set(cohort_groups[sel_grp])
@@ -4615,13 +4638,20 @@ def page_trends(cohort_groups: dict):
     else:
         lookup_df = trend_df
 
-    # compute peer_trend (Albion Trends tab comparison group)
-    if BUILTIN_T.get(sel_t) == "builtin_np":
-        peer_trend = trend_df[trend_df["CONTROL"] == 2]
+    # compute peer_trend and label (Albion Trends tab)
+    is_single = sel_inst_t is not None
+    if is_single:
+        peer_trend  = trend_df[trend_df["INSTNM"] == sel_inst_t]
+        peer_label_t = sel_inst_t
+    elif BUILTIN_T.get(sel_t) == "builtin_np":
+        peer_trend  = trend_df[trend_df["CONTROL"] == 2]
+        peer_label_t = sel_t
     elif BUILTIN_T.get(sel_t) == "builtin_size":
-        peer_trend = trend_df[(trend_df["CONTROL"] == 2) & (trend_df["INSTSIZE"].isin([1, 2]))]
+        peer_trend  = trend_df[(trend_df["CONTROL"] == 2) & (trend_df["INSTSIZE"].isin([1, 2]))]
+        peer_label_t = sel_t
     else:
-        peer_trend = trend_df[trend_df["UNITID"].isin(cohort_groups.get(sel_t, []))]
+        peer_trend  = trend_df[trend_df["UNITID"].isin(cohort_groups.get(sel_t, []))]
+        peer_label_t = sel_t
     peer_trend = peer_trend[~peer_trend["INSTNM"].str.contains("Albion College", case=False, na=False)]
 
     t1, t2 = st.tabs(["National Trends", "Albion College Trends"])
@@ -4630,8 +4660,9 @@ def page_trends(cohort_groups: dict):
         _page_overview_trends(trend_df, lookup_df, sel_grp, cohort_groups)
 
     with t2:
-        _albion_trends_tab(None, None, sel_t, cohort_groups, sel_t,
-                           _peer_trend_override=peer_trend)
+        _albion_trends_tab(None, None, peer_label_t, cohort_groups, sel_t,
+                           _peer_trend_override=peer_trend,
+                           _is_single_school=is_single)
 
 
 def page_albion(df: pd.DataFrame, cohort_groups: dict, year: str = "2024-25"):
