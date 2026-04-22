@@ -41,10 +41,22 @@ DB_PATH     = os.path.join(_HERE, "ipeds.duckdb")
 COHORT_PATH = os.path.join(_HERE, "grouping.csv")
 
 
-def _ensure_db() -> None:
-    """Download ipeds.duckdb from Google Drive when running on Streamlit Cloud."""
-    if os.path.exists(DB_PATH):
-        return
+def _db_is_valid() -> bool:
+    """Return True only if the local DB exists and contains METRICS_LONG (multi-year)."""
+    if not os.path.exists(DB_PATH):
+        return False
+    try:
+        import duckdb as _ddb
+        _con = _ddb.connect(DB_PATH, read_only=True)
+        _con.execute("SELECT 1 FROM METRICS_LONG LIMIT 1")
+        _con.close()
+        return True
+    except Exception:
+        return False
+
+
+def _download_db() -> None:
+    """Download ipeds.duckdb from Google Drive."""
     gdrive_id = st.secrets.get("GDRIVE_DB_ID", None)
     if not gdrive_id:
         st.error(
@@ -56,19 +68,17 @@ def _ensure_db() -> None:
 
     import requests
 
-    # Google's newer reliable direct-download endpoint (bypasses the virus-scan page)
     DOWNLOAD_URLS = [
         f"https://drive.usercontent.google.com/download?id={gdrive_id}&export=download&authuser=0&confirm=t",
         f"https://drive.google.com/uc?export=download&id={gdrive_id}&confirm=t",
     ]
 
-    with st.spinner("Downloading database from Google Drive (first run — ~30 s)…"):
+    with st.spinner("Downloading database from Google Drive (this may take ~60 s for the multi-year DB)…"):
         tmp_path = DB_PATH + ".tmp"
         downloaded = False
-
         for url in DOWNLOAD_URLS:
             try:
-                resp = requests.get(url, stream=True, timeout=120,
+                resp = requests.get(url, stream=True, timeout=300,
                                     headers={"User-Agent": "Mozilla/5.0"})
                 if resp.status_code != 200:
                     continue
@@ -77,12 +87,14 @@ def _ensure_db() -> None:
                         if chunk:
                             f.write(chunk)
                 size_mb = os.path.getsize(tmp_path) / 1024 / 1024
-                if size_mb >= 10:          # real DB is ~162 MB; HTML error pages are <1 MB
+                if size_mb >= 10:
+                    if os.path.exists(DB_PATH):
+                        os.remove(DB_PATH)
                     os.rename(tmp_path, DB_PATH)
                     downloaded = True
                     break
                 else:
-                    os.remove(tmp_path)    # got an HTML page, try next URL
+                    os.remove(tmp_path)
             except Exception:
                 if os.path.exists(tmp_path):
                     os.remove(tmp_path)
@@ -96,9 +108,20 @@ def _ensure_db() -> None:
                 "2. Change access to **Anyone with the link** → **Viewer**\n"
                 "3. Copy the new link — the File ID is the long string between `/d/` and `/view`\n"
                 "4. Update `GDRIVE_DB_ID` in your Streamlit Cloud **Secrets** settings\n"
-                "5. Reboot the app from the Streamlit Cloud dashboard"
+                "5. Click **Refresh Data** in the sidebar"
             )
             st.stop()
+
+
+def _ensure_db() -> None:
+    """Ensure a valid multi-year database is present; download if missing or outdated."""
+    if _db_is_valid():
+        return
+    # DB missing OR is the old single-year version (no METRICS_LONG) — re-download
+    if os.path.exists(DB_PATH):
+        st.info("Updating database to multi-year version — downloading from Google Drive…")
+        os.remove(DB_PATH)
+    _download_db()
 
 st.set_page_config(
     page_title="IPEDS 2024-25 Dashboard",
@@ -5057,6 +5080,8 @@ def main():
     st.sidebar.divider()
     if st.sidebar.button("🔄 Refresh Data", use_container_width=True):
         st.cache_data.clear()
+        if os.path.exists(DB_PATH):
+            os.remove(DB_PATH)
         st.rerun()
     st.sidebar.markdown(
         "<div style='font-size:0.82rem;color:#6B7280;text-align:center;line-height:1.5;padding-top:6px;'>"
