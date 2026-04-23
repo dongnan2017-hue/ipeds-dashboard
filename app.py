@@ -209,7 +209,7 @@ SCATTER_VARS = {
     # Costs
     "In-State COA ($)":         "CINSON",
     "Out-of-State COA ($)":     "COTSON",
-    "Tuition 2024-25 ($)":      "TUFEYR3",
+    "Tuition & Fees ($)":        "TUFEYR3",
     # Financial Aid
     "% Receiving Any Aid":      "ANYAIDP",
     "% Receiving Pell":         "PGRNT_P",
@@ -725,7 +725,7 @@ TREND_METRICS = {
 
 
 def _render_inst_pivot(inst_df: "pd.DataFrame"):
-    """Render Metric | 2023-24 | 2024-25 | Δ table for the given institution rows."""
+    """Render Metric | year… | Δ table for the given institution rows."""
     rows_out = []
     for label, (col, _) in TREND_METRICS.items():
         row = {"Metric": label}
@@ -734,8 +734,9 @@ def _render_inst_pivot(inst_df: "pd.DataFrame"):
             row[r["YEAR"]] = float(val) if val is not None and not pd.isna(val) else float("nan")
         rows_out.append(row)
     piv = pd.DataFrame(rows_out).set_index("Metric")
-    if "2023-24" in piv.columns and "2024-25" in piv.columns:
-        piv["Δ"] = piv["2024-25"] - piv["2023-24"]
+    _yr_cols = sorted(c for c in piv.columns if len(c) == 7 and c[4] == "-")
+    if len(_yr_cols) >= 2:
+        piv["Δ"] = piv[_yr_cols[-1]] - piv[_yr_cols[-2]]
 
     def _cd(v):
         if pd.isna(v):
@@ -2094,6 +2095,11 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
     yr2   = year[2:4]  # "24", "23", or "22"
     sfayr    = f"{int(yr)-1}{yr2}"   # e.g. "2324" for 2024-25, "2223" for 2023-24, "2122" for 2022-23
     yr_prev  = str(int(yr) - 1)      # "2023", "2022", or "2021"
+    # Academic year labels for multi-year trend data (AY3=current, AY2=1yr ago, AY1=2yr, AY0=3yr)
+    _ay3 = year
+    _ay2 = f"{int(yr)-1}-{yr2}"
+    _ay1 = f"{int(yr)-2}-{int(yr2)-1:02d}"
+    _ay0 = f"{int(yr)-3}-{int(yr2)-2:02d}"
 
     try:
         # Header
@@ -3393,10 +3399,10 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                     # Tuition trend (in-state, 4 years)
                     st.subheader("Published In-State Tuition & Fees Trend")
                     trend = [
-                        ("2021-22", cr.get("CHG2AY0")),
-                        ("2022-23", cr.get("CHG2AY1")),
-                        ("2023-24", cr.get("CHG2AY2")),
-                        ("2024-25", cr.get("CHG2AY3")),
+                        (_ay0, cr.get("CHG2AY0")),
+                        (_ay1, cr.get("CHG2AY1")),
+                        (_ay2, cr.get("CHG2AY2")),
+                        (_ay3, cr.get("CHG2AY3")),
                     ]
                     trend_df = pd.DataFrame(
                         [(yr, float(v)) for yr, v in trend if pd.notna(v)],
@@ -3411,10 +3417,10 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
 
                     # Out-of-state trend
                     oos_trend = [
-                        ("2021-22", cr.get("CHG3AY0")),
-                        ("2022-23", cr.get("CHG3AY1")),
-                        ("2023-24", cr.get("CHG3AY2")),
-                        ("2024-25", cr.get("CHG3AY3")),
+                        (_ay0, cr.get("CHG3AY0")),
+                        (_ay1, cr.get("CHG3AY1")),
+                        (_ay2, cr.get("CHG3AY2")),
+                        (_ay3, cr.get("CHG3AY3")),
                     ]
                     oos_df = pd.DataFrame(
                         [(yr, float(v)) for yr, v in oos_trend if pd.notna(v)],
@@ -3535,9 +3541,9 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                 if not fa2.empty:
                     far = fa2.iloc[0]
                     fa_trend = [
-                        ("2021-22", far.get("GISTN0"), far.get("GISTA0")),
-                        ("2022-23", far.get("GISTN1"), far.get("GISTA1")),
-                        ("2023-24", far.get("GISTN2"), far.get("GISTA2")),
+                        (_ay0, far.get("GISTN0"), far.get("GISTA0")),
+                        (_ay1, far.get("GISTN1"), far.get("GISTA1")),
+                        (_ay2, far.get("GISTN2"), far.get("GISTA2")),
                     ]
                     fa_df = pd.DataFrame(
                         [(yr, float(n) if pd.notna(n) else None, float(a) if pd.notna(a) else None)
@@ -4526,7 +4532,7 @@ def page_trends(cohort_groups: dict):
         # Institution search
         st.divider()
         st.subheader("Institution Lookup")
-        st.caption("Search any institution to see its 2023-24 vs 2024-25 metrics.")
+        st.caption(f"Search any institution to see its {YEARS[0]} → {YEARS[-1]} metrics.")
         all_names = sorted(trend_df["INSTNM"].dropna().unique())
         sch = st.selectbox("Search institution", ["— select —"] + all_names, key="yt_inst_search")
         if sch and sch != "— select —":
@@ -4777,7 +4783,7 @@ def page_albion(df: pd.DataFrame, cohort_groups: dict, year: str = "2024-25"):
     st.subheader("Performance Scorecard")
     with st.expander("How to read this table", expanded=False):
         st.markdown(
-            """
+            f"""
 **What this table shows**
 
 Each row is one institutional metric — grouped by theme (Admissions, Student Success, Equity & Access, Costs & Aid,
@@ -4785,7 +4791,7 @@ Faculty & Staff, Library). For every metric you see three things:
 
 | Column | Meaning |
 |---|---|
-| **Albion Value** | Albion College's actual reported figure for the 2024-25 reporting cycle |
+| **Albion Value** | Albion College's actual reported figure for the {year} reporting cycle |
 | **vs … (pct)** | Albion's *percentile rank* within the selected peer group — the share of peer institutions that Albion **outperforms** on this metric |
 | **Rating** | A traffic-light badge based on that percentile |
 
