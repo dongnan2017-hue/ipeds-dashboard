@@ -4457,75 +4457,6 @@ def page_trends(cohort_groups: dict):
         "Small Private NP — under 5,000 students": "builtin_size",
     }
 
-    # ── Single group selector drives both tabs ────────────────────────────────
-    sel_grp = st.selectbox(
-        "Select cohort / peer group",
-        list(BUILTIN.keys()) + sorted(cohort_groups.keys()),
-        index=list(BUILTIN.keys()).index("All Private Non-Profit (national)"),
-        key="yt_grp",
-        help="National tab: shows cohort comparison table. Albion tab: used as peer benchmark.",
-    )
-    sel_peer_grp = sel_grp  # same selection drives both tabs
-
-    # Build school list — only when a named cohort is selected (not built-ins)
-    _builtin_selected = sel_grp in BUILTIN
-    if not _builtin_selected:
-        _pool = cohort_groups.get(sel_grp, [])
-        _school_rows = (
-            trend_df[trend_df["UNITID"].isin(_pool)][["UNITID", "INSTNM"]]
-            .drop_duplicates("UNITID").dropna(subset=["INSTNM"])
-            .sort_values("INSTNM")
-        )
-        _school_rows = _school_rows[
-            ~_school_rows["INSTNM"].str.contains("Albion College", case=False, na=False)
-        ]
-        _uid_by_name  = {str(r["INSTNM"]): int(r["UNITID"]) for _, r in _school_rows.iterrows()}
-        _school_names = list(_uid_by_name.keys())
-    else:
-        _uid_by_name  = {}
-        _school_names = []
-
-    # 1-on-1 school picker — only available when a cohort group is selected
-    if not _builtin_selected:
-        sel_school = st.selectbox(
-            "Or compare Albion 1-on-1 vs. one school from this cohort:",
-            ["— use group median —"] + _school_names,
-            key="yt_school",
-        )
-    else:
-        sel_school = "— use group median —"
-    use_single = sel_school != "— use group median —"
-
-    # ── Derived DataFrames ────────────────────────────────────────────────────
-    # National tab: show cohort table only when a named cohort is selected
-    if not _builtin_selected:
-        lookup_df = trend_df[trend_df["UNITID"].isin(cohort_groups[sel_grp])]
-    else:
-        lookup_df = trend_df
-
-    # Albion tab: Albion rows
-    alb_df = trend_df[trend_df["INSTNM"].str.contains("Albion College", case=False, na=False)].sort_values("YEAR")
-
-    # Albion tab: peer rows — use UNITID lookup, never string matching
-    if use_single:
-        _sel_uid = _uid_by_name[sel_school]
-        peer_df  = trend_df[trend_df["UNITID"] == _sel_uid]
-        peer_label    = sel_school
-        peer_line_name = sel_school
-    elif BUILTIN.get(sel_peer_grp) == "builtin_np":
-        peer_df  = trend_df[trend_df["CONTROL"] == 2]
-        peer_label    = sel_peer_grp
-        peer_line_name = "Peer Median"
-    elif BUILTIN.get(sel_peer_grp) == "builtin_size":
-        peer_df  = trend_df[(trend_df["CONTROL"] == 2) & (trend_df["INSTSIZE"].isin([1, 2]))]
-        peer_label    = sel_peer_grp
-        peer_line_name = "Peer Median"
-    else:
-        peer_df  = trend_df[trend_df["UNITID"].isin(cohort_groups.get(sel_peer_grp, []))]
-        peer_label    = sel_peer_grp
-        peer_line_name = "Peer Median"
-    peer_df = peer_df[~peer_df["INSTNM"].str.contains("Albion College", case=False, na=False)]
-
     # ── TABS ──────────────────────────────────────────────────────────────────
     t1, t2 = st.tabs(["📊 National Trends", "🎓 Albion College Trends"])
 
@@ -4592,63 +4523,6 @@ def page_trends(cohort_groups: dict):
             fig.update_layout(height=340, legend_title="", xaxis_title="", yaxis_title="")
             col_w.plotly_chart(fig, use_container_width=True)
 
-        # Cohort comparison table
-        if not _builtin_selected and not lookup_df.empty:
-            st.divider()
-            n_inst = lookup_df["UNITID"].nunique()
-            st.subheader(f"Cohort Comparison — {sel_grp}")
-            st.caption(f"**{n_inst}** institutions · green Δ = improved · red Δ = declined · click header to sort")
-
-            def _dcolor(v):
-                if pd.isna(v): return ""
-                return "color:#059669;font-weight:bold" if v > 0 else "color:#DC2626;font-weight:bold"
-
-            def _alb_row(r):
-                if "Albion College" in str(r.name):
-                    return ["background-color:#FDE68A;color:#78350F;font-weight:bold"] * len(r)
-                return [""] * len(r)
-
-            sum_rows = []
-            for uid in sorted(lookup_df["UNITID"].unique()):
-                r24 = lookup_df[(lookup_df["UNITID"]==uid) & (lookup_df["YEAR"]=="2024-25")]
-                r23 = lookup_df[(lookup_df["UNITID"]==uid) & (lookup_df["YEAR"]=="2023-24")]
-                if r24.empty and r23.empty: continue
-                ref = r24.iloc[0] if not r24.empty else r23.iloc[0]
-                d = {"State": ref.get("STABBR", "")}
-                for lbl, col, _ in METRICS:
-                    sh = SHORT[lbl]
-                    v24 = float(r24.iloc[0][col]) if not r24.empty and pd.notna(r24.iloc[0].get(col)) else None
-                    v23 = float(r23.iloc[0][col]) if not r23.empty and pd.notna(r23.iloc[0].get(col)) else None
-                    d[f"{sh} 23-24"] = v23
-                    d[f"{sh} 24-25"] = v24
-                    d[f"{sh} Δ"]     = (v24 - v23) if v24 is not None and v23 is not None else None
-                sum_rows.append((ref.get("INSTNM", str(uid)), d))
-
-            if sum_rows:
-                sum_df = pd.DataFrame([r for _,r in sum_rows], index=[n for n,_ in sum_rows])
-                sum_df.index.name = "Institution"
-                dcols = [c for c in sum_df.columns if c.endswith(" Δ")]
-                vcols = [c for c in sum_df.columns if c.endswith(" 23-24") or c.endswith(" 24-25")]
-                fmt_d = ({c: (lambda v: f"{v:+,.1f}" if pd.notna(v) else "—") for c in dcols}
-                       | {c: (lambda v: f"{v:,.1f}"  if pd.notna(v) else "—") for c in vcols}
-                       | {"State": lambda v: str(v) if pd.notna(v) else "—"})
-                styled = sum_df.style.map(_dcolor, subset=dcols).format(fmt_d)
-                if len(sum_df) <= 200:
-                    styled = styled.apply(_alb_row, axis=1)
-                st.dataframe(styled, use_container_width=True,
-                             height=min(520 + max(0, len(sum_df)-20)*4, 800))
-
-            # Per-institution expanders
-            st.divider()
-            st.subheader(f"Each Institution — {sel_grp}")
-            st.caption("Expand any institution to see its 2023-24 vs 2024-25 metrics.")
-            uid_name = (lookup_df[["UNITID","INSTNM"]].drop_duplicates("UNITID").sort_values("INSTNM"))
-            for _, irow in uid_name.iterrows():
-                uid  = irow["UNITID"]
-                name = str(irow["INSTNM"])
-                with st.expander(name, expanded=("Albion College" in name)):
-                    _render_inst_pivot(lookup_df[lookup_df["UNITID"]==uid].sort_values("YEAR"))
-
         # Institution search
         st.divider()
         st.subheader("Institution Lookup")
@@ -4662,9 +4536,68 @@ def page_trends(cohort_groups: dict):
     # TAB 2 — Albion College Trends
     # ════════════════════════════════════════════════════════════════════════
     with t2:
+        # ── Peer group selector (Albion tab only) ─────────────────────────────
+        sel_grp = st.selectbox(
+            "Select cohort / peer group",
+            list(BUILTIN.keys()) + sorted(cohort_groups.keys()),
+            index=list(BUILTIN.keys()).index("All Private Non-Profit (national)"),
+            key="yt_grp",
+            help="Used as peer benchmark for Albion comparisons.",
+        )
+
+        _builtin_selected = sel_grp in BUILTIN
+        if not _builtin_selected:
+            _pool = cohort_groups.get(sel_grp, [])
+            _school_rows = (
+                trend_df[trend_df["UNITID"].isin(_pool)][["UNITID", "INSTNM"]]
+                .drop_duplicates("UNITID").dropna(subset=["INSTNM"])
+                .sort_values("INSTNM")
+            )
+            _school_rows = _school_rows[
+                ~_school_rows["INSTNM"].str.contains("Albion College", case=False, na=False)
+            ]
+            _uid_by_name  = {str(r["INSTNM"]): int(r["UNITID"]) for _, r in _school_rows.iterrows()}
+            _school_names = list(_uid_by_name.keys())
+        else:
+            _uid_by_name  = {}
+            _school_names = []
+
+        if not _builtin_selected:
+            sel_school = st.selectbox(
+                "Or compare Albion 1-on-1 vs. one school from this cohort:",
+                ["— use group median —"] + _school_names,
+                key="yt_school",
+            )
+        else:
+            sel_school = "— use group median —"
+        use_single = sel_school != "— use group median —"
+
+        # Albion rows
+        alb_df = trend_df[trend_df["INSTNM"].str.contains("Albion College", case=False, na=False)].sort_values("YEAR")
+
         if alb_df.empty:
             st.warning("Albion College not found in METRICS_LONG.")
             return
+
+        # Peer rows
+        if use_single:
+            _sel_uid = _uid_by_name[sel_school]
+            peer_df  = trend_df[trend_df["UNITID"] == _sel_uid]
+            peer_label    = sel_school
+            peer_line_name = sel_school
+        elif BUILTIN.get(sel_grp) == "builtin_np":
+            peer_df  = trend_df[trend_df["CONTROL"] == 2]
+            peer_label    = sel_grp
+            peer_line_name = "Peer Median"
+        elif BUILTIN.get(sel_grp) == "builtin_size":
+            peer_df  = trend_df[(trend_df["CONTROL"] == 2) & (trend_df["INSTSIZE"].isin([1, 2]))]
+            peer_label    = sel_grp
+            peer_line_name = "Peer Median"
+        else:
+            peer_df  = trend_df[trend_df["UNITID"].isin(cohort_groups.get(sel_grp, []))]
+            peer_label    = sel_grp
+            peer_line_name = "Peer Median"
+        peer_df = peer_df[~peer_df["INSTNM"].str.contains("Albion College", case=False, na=False)]
 
         _t2_newest = YEARS[-1]
         _t2_prev   = YEARS[-2] if len(YEARS) >= 2 else None
