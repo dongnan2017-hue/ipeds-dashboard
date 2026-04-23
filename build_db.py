@@ -21,6 +21,11 @@ YEARS = [
         "skip":  {"newVariables23", "tables23", "valueSets23", "varTable23",
                   "Tables23"},
     },
+    {
+        "label": "2022-23",
+        "accdb": r"C:\Users\dongn\Videos\IPEDS\IPEDS202223.accdb",
+        "skip":  {"Tables22", "valuesets22", "vartable22"},
+    },
 ]
 
 META_EXCEL = r"C:\Users\dongn\Videos\IPEDS\IPEDS202425Tablesdoc.xlsx"
@@ -28,6 +33,7 @@ META_EXCEL = r"C:\Users\dongn\Videos\IPEDS\IPEDS202425Tablesdoc.xlsx"
 # ── SQL to build one year's slice of METRICS_LONG ────────────────────────────
 # 2024-25 uses DRVCOST2024 for cost; CARNEGIEIC is available in HD2024.
 # 2023-24 uses DRVIC2023 for cost;   CARNEGIEIC is NULL (not yet published).
+# 2022-23 uses DRVIC2022 for cost;   CARNEGIEIC is NULL; SFA is SFA2122_P1.
 METRICS_SQL = {
     "2024-25": """
         SELECT
@@ -143,6 +149,64 @@ METRICS_SQL = {
         LEFT JOIN SFA2223_P1  s    ON h.UNITID = s.UNITID
         LEFT JOIN DRVOM2023   om   ON h.UNITID = om.UNITID
         LEFT JOIN DRVAL2023   lib  ON h.UNITID = lib.UNITID
+    """,
+
+    "2022-23": """
+        SELECT
+            '2022-23'           AS YEAR,
+            h.UNITID, h.INSTNM, h.CITY, h.STABBR,
+            h.SECTOR, h.ICLEVEL, h.CONTROL,
+            h.HBCU, h.TRIBAL, h.MEDICAL, h.LANDGRNT, h.CYACTIVE,
+            h.LOCALE, h.INSTSIZE, h.OBEREG,
+            NULL                AS CARNEGIEIC,
+            h.LONGITUD, h.LATITUDE,
+            -- enrollment
+            e.ENRTOT, e.FTE, e.EFUG, e.EFGRAD, e.ENRFT, e.ENRPT,
+            e.PCTENRW,  e.PCTENRWH, e.PCTENRBK, e.PCTENRHS, e.PCTENRAP,
+            e.PCTENRAN, e.PCTENRUN, e.PCTENRNR,  e.PCTENR2M,
+            e.PCTDEEXC, e.PCTFT1ST,
+            ef12.UNDUP AS EF12UNDUP,
+            -- admissions
+            a.DVADM01, a.DVADM04,
+            -- graduation rates
+            g.GRRTTOT, g.GRRTM,  g.GRRTW,
+            g.GRRTAN,  g.GRRTAP, g.GRRTAS, g.GRRTNH,
+            g.GRRTBK,  g.GRRTHS, g.GRRTWH, g.GRRT2M,
+            g.GBA4RTT, g.GBA5RTT, g.GBA6RTT,
+            g.PGGRRTT, g.TRRTTOT,
+            -- cost (from DRVIC2022 — cost was inside IC survey before 2024-25)
+            c.CINSON, c.COTSON, c.TUFEYR3,
+            -- completions
+            d.BASDEG, d.MASDEG, d.ASCDEG, d.DOCDEGRS, d.DOCDEGPP,
+            d.CERT1A, d.CERT1B, d.CERT2, d.CERT4,
+            -- HR
+            r.SALTOTL, r.SFTETOTL, r.SFTEINST,
+            -- finance
+            f.F1CORREV, f.F1COREXP, f.F2CORREV, f.F2COREXP,
+            -- retention / student-faculty ratio
+            ef.RET_PCF, ef.RET_PCP, ef.STUFACR,
+            -- financial aid
+            s.ANYAIDP, s.PGRNT_P, s.PGRNT_A,
+            s.AGRNT_P, s.AGRNT_A, s.LOAN_P,
+            s.FGRNT_P, s.IGRNT_P, s.SGRNT_P,
+            -- outcome measures
+            om.OM1TOTLAWDP8, om.OM2TOTLAWDP8,
+            om.OM1PELLAWDP8, om.OM1NPELAWDP8,
+            -- library
+            lib.LEXPTOTF, lib.LEBOOKSP
+        FROM HD2022 h
+        LEFT JOIN DRVEF2022   e    ON h.UNITID = e.UNITID
+        LEFT JOIN DRVEF122022 ef12 ON h.UNITID = ef12.UNITID
+        LEFT JOIN DRVADM2022  a    ON h.UNITID = a.UNITID
+        LEFT JOIN DRVGR2022   g    ON h.UNITID = g.UNITID
+        LEFT JOIN DRVIC2022   c    ON h.UNITID = c.UNITID
+        LEFT JOIN DRVC2022    d    ON h.UNITID = d.UNITID
+        LEFT JOIN DRVHR2022   r    ON h.UNITID = r.UNITID
+        LEFT JOIN DRVF2022    f    ON h.UNITID = f.UNITID
+        LEFT JOIN EF2022D     ef   ON h.UNITID = ef.UNITID
+        LEFT JOIN SFA2122_P1  s    ON h.UNITID = s.UNITID
+        LEFT JOIN DRVOM2022   om   ON h.UNITID = om.UNITID
+        LEFT JOIN DRVAL2022   lib  ON h.UNITID = lib.UNITID
     """,
 }
 

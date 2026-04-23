@@ -353,6 +353,72 @@ _SQL_2425 = """
     LEFT JOIN DRVAL2024      lib  ON h.UNITID = lib.UNITID
 """
 
+_SQL_2223 = """
+    SELECT
+        h.UNITID, h.INSTNM, h.CITY, h.STABBR, h.WEBADDR, h.COUNTYCD,
+        h.SECTOR, h.ICLEVEL, h.CONTROL, h.HLOFFER, h.DEGGRANT,
+        h.HBCU, h.TRIBAL, h.MEDICAL, h.LOCALE, h.INSTSIZE, h.OBEREG,
+        NULL AS CARNEGIEIC, NULL AS CARNEGIERSCH, NULL AS CARNEGIESIZE, NULL AS CARNEGIEALF,
+        h.LANDGRNT, h.CYACTIVE, h.LONGITUD, h.LATITUDE,
+        h.ZIP, h.CHFNM, h.CHFTITLE, h.GENTELE, h.OPEID,
+        h.ADMINURL, h.FAIDURL, h.APPLURL, h.NPRICURL, h.VETURL, h.DISAURL,
+        e.ENRTOT, e.FTE, e.EFUG, e.EFGRAD, e.ENRFT, e.ENRPT,
+        e.PCTENRW, e.PCTENRWH, e.PCTENRBK, e.PCTENRHS,
+        e.PCTENRAP, e.PCTENRAN, e.PCTENRUN, e.PCTENRNR, e.PCTENR2M,
+        e.PCTDEEXC, e.PCTDESOM, e.PCTDENON, e.PCTFT1ST,
+        ef12.UNDUP AS EF12UNDUP, ef12.UNDUPUG AS EF12UNDUPUG,
+        ef12.E12FT AS EF12FT, ef12.E12PT AS EF12PT,
+        ef12.E12UGFT AS EF12UGFT, ef12.E12GRAD AS EF12GRAD,
+        a.DVADM01, a.DVADM02, a.DVADM03, a.DVADM04,
+        a.DVADM05, a.DVADM06, a.DVADM07, a.DVADM08,
+        a.DVADM09, a.DVADM10, a.DVADM11, a.DVADM12,
+        g.GRRTTOT, g.GRRTM, g.GRRTW,
+        g.GRRTAN, g.GRRTAP, g.GRRTAS, g.GRRTNH, g.GRRTBK, g.GRRTHS, g.GRRTWH, g.GRRT2M, g.GRRTUN, g.GRRTNR,
+        g.GBA4RTT, g.GBA5RTT, g.GBA6RTT, g.GBA6RTM, g.GBA6RTW,
+        g.GBA6RTAN, g.GBA6RTAP, g.GBA6RTAS, g.GBA6RTNH, g.GBA6RTBK, g.GBA6RTHS, g.GBA6RTWH, g.GBA6RT2M, g.GBA6RTUN, g.GBA6RTNR,
+        g.GBATRRT, g.PGGRRTT, g.PGBA6RT, g.SSGRRTT, g.SSBA6RT, g.NRGRRTT, g.NRBA6RT, g.TRRTTOT,
+        c.CINSON, c.COTSON, c.CINDON, c.TUFEYR3,
+        d.BASDEG, d.MASDEG, d.DOCDEGRS, d.DOCDEGPP, d.DOCDEGOT,
+        d.ASCDEG, d.CERT1A, d.CERT1B, d.CERT2, d.CERT4,
+        r.SALTOTL, r.SALPROF, r.SALASSC, r.SALASST, r.SALINST,
+        r.SALLECT, r.SALNRNK,
+        r.SFTETOTL, r.SFTEPSTC, r.SFTEINST, r.SFTERSRC, r.SFTEPBSV,
+        r.SFTELCAI, r.SFTELCA, r.SFTEOTIS, r.SFTEMNGM, r.SFTEBFO,
+        r.SFTECES, r.SFTECLAM, r.SFTEHLTH, r.SFTEOTHR, r.SFTESRVC,
+        r.SFTESALE, r.SFTEOFAS, r.SFTENRCM, r.SFTEPTMM,
+        f.F1CORREV, f.F1COREXP, f.F2CORREV, f.F2COREXP,
+        ef.RET_PCF, ef.RET_PCP, ef.STUFACR,
+        ef.GRCOHRT, ef.UGENTERN, ef.PGRCOHRT,
+        ef.RRFTCT, ef.RRFTCTA, ef.RET_NMF,
+        ef.RRPTCT, ef.RRPTCTA, ef.RET_NMP,
+        s.ANYAIDP, s.PGRNT_P, s.PGRNT_A, s.AGRNT_P, s.AGRNT_A,
+        s.LOAN_P, s.LOAN_A, s.FGRNT_P, s.IGRNT_P, s.SGRNT_P,
+        om.OM1TOTLAWDP4, om.OM1TOTLAWDP6, om.OM1TOTLAWDP8,
+        om.OM1TOTLENYP8,
+        om.OM1PELLAWDP4, om.OM1PELLAWDP6, om.OM1PELLAWDP8,
+        om.OM1NPELAWDP4, om.OM1NPELAWDP6, om.OM1NPELAWDP8,
+        om.OM2TOTLAWDP4, om.OM2TOTLAWDP6, om.OM2TOTLAWDP8,
+        om.OM2TOTLENYP8,
+        om.OM2PELLAWDP4, om.OM2PELLAWDP6, om.OM2PELLAWDP8,
+        om.OM2NPELAWDP4, om.OM2NPELAWDP6, om.OM2NPELAWDP8,
+        om.OM3TOTLAWDP4, om.OM3TOTLAWDP6, om.OM3TOTLAWDP8,
+        om.OM4TOTLAWDP4, om.OM4TOTLAWDP6, om.OM4TOTLAWDP8,
+        lib.LPBOOKSP, lib.LEBOOKSP, lib.LEXPTOTF, lib.LTOTLFTE AS LIBLFTE
+    FROM HD2022 h
+    LEFT JOIN DRVEF2022      e    ON h.UNITID = e.UNITID
+    LEFT JOIN DRVEF122022    ef12 ON h.UNITID = ef12.UNITID
+    LEFT JOIN DRVADM2022     a    ON h.UNITID = a.UNITID
+    LEFT JOIN DRVGR2022      g    ON h.UNITID = g.UNITID
+    LEFT JOIN DRVIC2022      c    ON h.UNITID = c.UNITID
+    LEFT JOIN DRVC2022       d    ON h.UNITID = d.UNITID
+    LEFT JOIN DRVHR2022      r    ON h.UNITID = r.UNITID
+    LEFT JOIN DRVF2022       f    ON h.UNITID = f.UNITID
+    LEFT JOIN EF2022D        ef   ON h.UNITID = ef.UNITID
+    LEFT JOIN SFA2122_P1     s    ON h.UNITID = s.UNITID
+    LEFT JOIN DRVOM2022      om   ON h.UNITID = om.UNITID
+    LEFT JOIN DRVAL2022      lib  ON h.UNITID = lib.UNITID
+"""
+
 _SQL_2324 = """
     SELECT
         h.UNITID, h.INSTNM, h.CITY, h.STABBR, h.WEBADDR, h.COUNTYCD,
@@ -429,7 +495,7 @@ _SQL_2324 = """
 @st.cache_data(show_spinner="Loading IPEDS data …")
 def load_master(year: str = "2024-25") -> pd.DataFrame:
     con = duckdb.connect(DB_PATH, read_only=True)
-    sql = _SQL_2425 if year == "2024-25" else _SQL_2324
+    sql = _SQL_2425 if year == "2024-25" else _SQL_2324 if year == "2023-24" else _SQL_2223
     df = con.execute(sql).df()
     def _make_map(varname: str) -> dict:
         rows = con.execute(
@@ -696,7 +762,7 @@ def page_overview(df: pd.DataFrame, sel_groups: list | None = None, year: str = 
             st.title(f"National Overview — IPEDS {year}")
     with y_col:
         st.markdown("<div style='padding-top:1.1rem'></div>", unsafe_allow_html=True)
-        st.radio("Data Year", ["2024-25", "2023-24"], horizontal=True,
+        st.radio("Data Year", ["2024-25", "2023-24", "2022-23"], horizontal=True,
                  key="year_National Overview", label_visibility="collapsed")
     _alb = df[df["INSTNM"].str.contains("Albion College", case=False, na=False)]
     alb_row = _alb.iloc[0] if not _alb.empty else None
@@ -2003,7 +2069,7 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
         st.title("Institution Profile")
     with y_col:
         st.markdown("<div style='padding-top:1.1rem'></div>", unsafe_allow_html=True)
-        st.radio("Data Year", ["2024-25", "2023-24"], horizontal=True,
+        st.radio("Data Year", ["2024-25", "2023-24", "2022-23"], horizontal=True,
                  key="year_Institution Profile", label_visibility="collapsed")
 
     names = sorted(df["DISPLAY_NAME"].dropna().unique().tolist())
@@ -4052,7 +4118,7 @@ def page_compare(df: pd.DataFrame, cohort_groups: dict, year: str = "2024-25"):
         st.title("Compare Institutions")
     with y_col:
         st.markdown("<div style='padding-top:1.1rem'></div>", unsafe_allow_html=True)
-        st.radio("Data Year", ["2024-25", "2023-24"], horizontal=True,
+        st.radio("Data Year", ["2024-25", "2023-24", "2022-23"], horizontal=True,
                  key="year_Compare Institutions", label_visibility="collapsed")
 
     names = sorted(df["DISPLAY_NAME"].dropna().unique())
@@ -4357,7 +4423,7 @@ def page_trends(cohort_groups: dict):
 
     trend_df = load_trends()
 
-    YEARS = ["2023-24", "2024-25"]
+    YEARS = ["2022-23", "2023-24", "2024-25"]
     METRICS = [
         ("Grad Rate 150% (%)",    "GRRTTOT",      "{:.1f}%"),
         ("FT Retention Rate (%)", "RET_PCF",       "{:.1f}%"),
@@ -4663,7 +4729,7 @@ def page_albion(df: pd.DataFrame, cohort_groups: dict, year: str = "2024-25"):
         st.title("Albion College — Strategic Performance Analysis")
     with y_col:
         st.markdown("<div style='padding-top:1.1rem'></div>", unsafe_allow_html=True)
-        st.radio("Data Year", ["2024-25", "2023-24"], horizontal=True,
+        st.radio("Data Year", ["2024-25", "2023-24", "2022-23"], horizontal=True,
                  key="year_Albion Analysis", label_visibility="collapsed")
 
     alb_all = df[df["INSTNM"].str.contains("Albion College", case=False, na=False)]
