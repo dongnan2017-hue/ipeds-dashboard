@@ -1541,7 +1541,7 @@ def page_overview(df: pd.DataFrame, sel_groups: list | None = None, year: str = 
         tui_hist = df["TUFEYR3"].dropna()
         if not tui_hist.empty:
             fig = px.histogram(tui_hist, x="TUFEYR3", nbins=50,
-                               title="Distribution of Tuition & Fees 2024-25 (all institutions)",
+                               title=f"Distribution of Tuition & Fees {year} (all institutions)",
                                labels={"TUFEYR3":"Tuition & Fees ($)"})
             fig.update_layout(height=320, showlegend=False)
             fig.update_xaxes(tickprefix="$", tickformat=",.0f")
@@ -1557,7 +1557,7 @@ def page_overview(df: pd.DataFrame, sel_groups: list | None = None, year: str = 
             "AGRNT_P", "AGRNT_A", "LOAN_P", "LOAN_A",
         ]].rename(columns={
             "INSTNM": "Institution", "STABBR": "State", "SECTOR_LBL": "Sector",
-            "CINSON": "In-State COA ($)", "COTSON": "OOS COA ($)", "TUFEYR3": "Tuition 2024-25 ($)",
+            "CINSON": "In-State COA ($)", "COTSON": "OOS COA ($)", "TUFEYR3": f"Tuition {year} ($)",
             "ANYAIDP": "% Any Aid", "PGRNT_P": "% Pell", "PGRNT_A": "Avg Pell ($)",
             "AGRNT_P": "% Any Grant", "AGRNT_A": "Avg Grant ($)",
             "LOAN_P": "% Loans", "LOAN_A": "Avg Loan ($)",
@@ -1665,7 +1665,7 @@ def page_overview(df: pd.DataFrame, sel_groups: list | None = None, year: str = 
         with c1:
             fig = px.bar(dt_df, x="Total Awarded", y="Award Level", orientation="h",
                          color_discrete_sequence=["#17becf"],
-                         title="Total Awards Conferred by Level (2023-24)")
+                         title=f"Total Awards Conferred by Level ({year})")
             fig.update_layout(height=400, showlegend=False, yaxis_title="")
             fig.update_xaxes(tickformat=",.0f")
             st.plotly_chart(fig, use_container_width=True)
@@ -2090,10 +2090,10 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
     row = df[df["DISPLAY_NAME"] == sel].iloc[0]
     uid = int(row["UNITID"])
     con = duckdb.connect(DB_PATH, read_only=True)
-    yr    = "2024" if year == "2024-25" else "2023"
-    yr2   = "24"   if year == "2024-25" else "23"
-    sfayr = "2324" if year == "2024-25" else "2223"
-    yr_prev = "2023" if year == "2024-25" else "2022"
+    yr    = year[:4]   # "2024", "2023", or "2022"
+    yr2   = year[2:4]  # "24", "23", or "22"
+    sfayr    = f"{int(yr)-1}{yr2}"   # e.g. "2324" for 2024-25, "2223" for 2023-24, "2122" for 2022-23
+    yr_prev  = str(int(yr) - 1)      # "2023", "2022", or "2021"
 
     try:
         # Header
@@ -2121,7 +2121,7 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
         m[2].metric("Grad Rate 150%",      fmt(row.get("GRRTTOT"),       "pct"))
         m[3].metric("8-yr Award Rate",     fmt(row.get("OM1TOTLAWDP8"),  "pct"))
         m[4].metric("In-State COA",        fmt(row.get("CINSON"),        "dollar"))
-        m[5].metric("Tuition 2024-25",     fmt(row.get("TUFEYR3"),       "dollar"))
+        m[5].metric(f"Tuition {year}",      fmt(row.get("TUFEYR3"),       "dollar"))
         m[6].metric("Avg Faculty Salary",  fmt(row.get("SALTOTL"),       "dollar"))
 
         st.divider()
@@ -2405,7 +2405,7 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                     st.plotly_chart(fig, use_container_width=True)
 
             # 12-month enrollment from EFFY{yr}
-            st.subheader("12-Month Unduplicated Headcount (2023-24)")
+            st.subheader(f"12-Month Unduplicated Headcount ({year})")
             try:
                 effy = con.execute(f"""
                     SELECT EFFYALEV, EFYTOTLT, EFYTOTLM, EFYTOTLW,
@@ -2939,18 +2939,18 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
             if not deg_df.empty:
                 fig = px.bar(deg_df, x="Count", y="Award Level", orientation="h",
                              color_discrete_sequence=["#17becf"],
-                             title="Awards Conferred by Level (2023-24)")
+                             title=f"Awards Conferred by Level ({year})")
                 fig.update_layout(height=420, yaxis_title="")
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.info("No completions data.")
 
-            # Top programs from C2024_A
+            # Top programs from C{yr}_A
             st.subheader("Top 15 Programs (First Major, All Award Levels)")
             try:
                 prog = con.execute(f"""
                     SELECT CIPCODE, AWLEVEL, SUM(CTOTALT) AS Total
-                    FROM C2024_A
+                    FROM C{yr}_A
                     WHERE UNITID={uid} AND MAJORNUM=1
                     GROUP BY CIPCODE, AWLEVEL
                     ORDER BY Total DESC LIMIT 15
@@ -2962,14 +2962,14 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
             except Exception:
                 st.info("CIP data not available.")
 
-            # Completions by race/ethnicity from C2024_B
-            st.subheader("Completers by Race/Ethnicity (2023-24)")
+            # Completions by race/ethnicity from C{yr}_B
+            st.subheader(f"Completers by Race/Ethnicity ({year})")
             try:
                 cb = con.execute(f"""
                     SELECT CSTOTLT, CSTOTLM, CSTOTLW,
                            CSAIANT, CSASIAT, CSBKAAT, CSHISPT,
                            CSNHPIT, CSWHITT, CS2MORT, CSUNKNT, CSNRALT
-                    FROM C2024_B WHERE UNITID={uid}
+                    FROM C{yr}_B WHERE UNITID={uid}
                 """).df()
                 if not cb.empty:
                     cbr = cb.iloc[0]
@@ -3001,13 +3001,13 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
             except Exception as ex:
                 st.info(f"Completions by race not available. ({ex})")
 
-            # Completions by award level, gender, age from C2024_C
-            st.subheader("Completers by Award Level, Gender & Age (2023-24)")
+            # Completions by award level, gender, age from C{yr}_C
+            st.subheader(f"Completers by Award Level, Gender & Age ({year})")
             try:
                 cc = con.execute(f"""
                     SELECT AWLEVELC, CSTOTLT, CSTOTLM, CSTOTLW,
                            CSUND18, CS18_24, CS25_39, CSABV40, CSUNKN
-                    FROM C2024_C WHERE UNITID={uid}
+                    FROM C{yr}_C WHERE UNITID={uid}
                     ORDER BY AWLEVELC
                 """).df()
                 if not cc.empty:
@@ -3022,8 +3022,8 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
             except Exception as ex:
                 st.info(f"Completions by award level not available. ({ex})")
 
-            # C2024DEP — programs offered with distance education options
-            st.subheader("Programs Offered with Distance Education Options (C2024DEP, Top 15 CIPs)")
+            # C{yr}DEP — programs offered with distance education options
+            st.subheader(f"Programs Offered with Distance Education Options (C{yr}DEP, Top 15 CIPs)")
             try:
                 dep = con.execute(f"""
                     SELECT CIPCODE,
@@ -3033,7 +3033,7 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                            PMASTR AS Masters, PMASTRDE AS MastersDE,
                            PASSOC AS Associates, PASSOCDE AS AssociatesDE,
                            PDOCRS AS DocResearch, PDOCRSDE AS DocResearchDE
-                    FROM C2024DEP
+                    FROM C{yr}DEP
                     WHERE UNITID={uid}
                     ORDER BY PTOTALDE DESC NULLS LAST
                     LIMIT 15
@@ -3050,7 +3050,7 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                 else:
                     st.info("No distance education program data for this institution.")
             except Exception as ex:
-                st.info(f"C2024DEP not available. ({ex})")
+                st.info(f"C{yr}DEP not available. ({ex})")
 
         # ── Tab 4: Student Outcomes ───────────────────────────────────────────
         with tabs[4]:
@@ -3359,7 +3359,7 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
             mc1.metric("In-State COA",      fmt(row.get("CINSON"),  "dollar"))
             mc2.metric("Out-of-State COA",  fmt(row.get("COTSON"),  "dollar"))
             mc3.metric("In-District COA",   fmt(row.get("CINDON"),  "dollar"))
-            mc4.metric("Tuition 2024-25",   fmt(row.get("TUFEYR3"), "dollar"))
+            mc4.metric(f"Tuition {year}",    fmt(row.get("TUFEYR3"), "dollar"))
 
             try:
                 cost1 = con.execute(f"SELECT * FROM COST1_{yr} WHERE UNITID={uid}").df()
@@ -3367,7 +3367,7 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                     cr = cost1.iloc[0]
 
                     # Current year cost components
-                    st.subheader("2024-25 Cost Components")
+                    st.subheader(f"{year} Cost Components")
                     cost_items = [
                         ("In-district Tuition+Fees", cr.get("CHG1AY3")),
                         ("In-state Tuition+Fees",    cr.get("CHG2AY3")),
@@ -3385,7 +3385,7 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                     if not cost_df.empty:
                         fig = px.bar(cost_df, x="Component", y="Amount ($)",
                                      color_discrete_sequence=["#1f77b4"],
-                                     title="Cost Components 2024-25")
+                                     title=f"Cost Components {year}")
                         fig.update_layout(height=380, showlegend=False)
                         fig.update_yaxes(tickprefix="$", tickformat=",.0f")
                         st.plotly_chart(fig, use_container_width=True)
@@ -3438,11 +3438,11 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                 st.info(f"Cost detail not available. ({ex})")
 
             # Net price by income bracket
-            st.subheader("Average Net Price by Income Bracket (COST2_2024_NETPRICE, 2023-24)")
+            st.subheader(f"Average Net Price by Income Bracket (COST2_{yr}_NETPRICE)")
             try:
                 np_data = con.execute(f"""
                     SELECT NPIST2, NPIS412, NPIS422, NPIS432, NPIS442, NPIS452
-                    FROM COST2_2024_NETPRICE WHERE UNITID={uid}
+                    FROM COST2_{yr}_NETPRICE WHERE UNITID={uid}
                 """).df()
                 if not np_data.empty:
                     npr = np_data.iloc[0]
@@ -3523,14 +3523,14 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
             if pd.notna(coa) and pd.notna(avg_grnt):
                 st.metric("Estimated Net Price (In-State COA − Avg Grant)", f"${coa - avg_grnt:,.0f}")
 
-            # COST2_2024_FINANCIALAID — FA amounts for FTFT students
-            st.subheader("Financial Aid for Full-time First-time Students (COST2_2024_FINANCIALAID)")
+            # COST2_{yr}_FINANCIALAID — FA amounts for FTFT students
+            st.subheader(f"Financial Aid for Full-time First-time Students (COST2_{yr}_FINANCIALAID)")
             try:
                 fa2 = con.execute(f"""
                     SELECT GISTN2, GISTT2, GISTA2,
                            GISTN1, GISTT1, GISTA1,
                            GISTN0, GISTT0, GISTA0
-                    FROM COST2_2024_FINANCIALAID WHERE UNITID={uid}
+                    FROM COST2_{yr}_FINANCIALAID WHERE UNITID={uid}
                 """).df()
                 if not fa2.empty:
                     far = fa2.iloc[0]
@@ -3715,12 +3715,12 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
             except Exception as ex:
                 st.info(f"Staff count data not available. ({ex})")
 
-            # S2024_SIS — FT instructional staff by tenure status
-            st.subheader("Full-time Instructional Staff by Tenure Status (S2024_SIS)")
+            # S{yr}_SIS — FT instructional staff by tenure status
+            st.subheader(f"Full-time Instructional Staff by Tenure Status (S{yr}_SIS)")
             try:
                 sis = con.execute(f"""
                     SELECT FACSTAT, SISTOTL, SISPROF, SISASCP, SISASTP, SISINST, SISLECT, SISNORK
-                    FROM S2024_SIS WHERE UNITID={uid}
+                    FROM S{yr}_SIS WHERE UNITID={uid}
                     ORDER BY FACSTAT
                 """).df()
                 if not sis.empty:
@@ -3756,15 +3756,15 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
             except Exception as ex:
                 st.info(f"Tenure status data not available. ({ex})")
 
-            # S2024_IS — FT instructional staff by race/ethnicity
-            st.subheader("Full-time Instructional Staff by Race/Ethnicity (S2024_IS)")
+            # S{yr}_IS — FT instructional staff by race/ethnicity
+            st.subheader(f"Full-time Instructional Staff by Race/Ethnicity (S{yr}_IS)")
             try:
                 sis_race = con.execute(f"""
                     SELECT FACSTAT, ARANK,
                            HRTOTLT, HRTOTLM, HRTOTLW,
                            HRAIANT, HRASIAT, HRBKAAT, HRHISPT,
                            HRNHPIT, HRWHITT, HR2MORT, HRUNKNT, HRNRALT
-                    FROM S2024_IS
+                    FROM S{yr}_IS
                     WHERE UNITID={uid} AND SISCAT=1 AND FACSTAT=0 AND ARANK=0
                     LIMIT 1
                 """).df()
@@ -3801,7 +3801,7 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                     # Breakdown by rank (SISCAT 101-106 = professor through other)
                     sis_rank = con.execute(f"""
                         SELECT ARANK, HRTOTLT, HRWHITT, HRBKAAT, HRHISPT, HRASIAT, HRAIANT, HR2MORT, HRNRALT
-                        FROM S2024_IS
+                        FROM S{yr}_IS
                         WHERE UNITID={uid} AND SISCAT BETWEEN 101 AND 106 AND FACSTAT=10 AND ARANK IN (1,2,3,4,5,6)
                         ORDER BY ARANK
                     """).df()
@@ -3818,15 +3818,15 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                 else:
                     st.info("No instructional staff race/ethnicity data for this institution.")
             except Exception as ex:
-                st.info(f"S2024_IS not available. ({ex})")
+                st.info(f"S{yr}_IS not available. ({ex})")
 
-            # S2024_NH — New hires
-            st.subheader("New Hires (S2024_NH)")
+            # S{yr}_NH — New hires
+            st.subheader(f"New Hires (S{yr}_NH)")
             try:
                 nh = con.execute(f"""
                     SELECT OCCUPCAT, HRTOTLT, HRWHITT, HRBKAAT, HRHISPT, HRASIAT,
                            HRAIANT, HR2MORT, HRUNKNT, HRNRALT, HRTOTLM, HRTOTLW
-                    FROM S2024_NH
+                    FROM S{yr}_NH
                     WHERE UNITID={uid} AND FACSTAT=0 AND SGTYPE=1
                     ORDER BY HRTOTLT DESC NULLS LAST
                 """).df()
@@ -3874,7 +3874,7 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                 if lvl == 3:
                     st.info("Salary data is not collected for less-than-2-year institutions.")
                 else:
-                    st.info("This institution did not report instructional salary data for 2024-25.")
+                    st.info(f"This institution did not report instructional salary data for {year}.")
 
             # SAL{yr}_IS — detailed salary outlays for FT instructional staff by rank
             st.subheader(f"Salary Outlays — Full-time Instructional Staff by Rank (SAL{yr}_IS)")
@@ -3960,14 +3960,14 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
             except Exception as ex:
                 st.info(f"SAL{yr}_NIS not available. ({ex})")
 
-            # S2024_OC — staff by race/ethnicity and gender (diversity)
-            st.subheader("Staff Diversity by Race/Ethnicity (S2024_OC)")
+            # S{yr}_OC — staff by race/ethnicity and gender (diversity)
+            st.subheader(f"Staff Diversity by Race/Ethnicity (S{yr}_OC)")
             try:
                 soc = con.execute(f"""
                     SELECT OCCUPCAT, HRTOTLT, HRWHITT, HRBKAAT, HRHISPT,
                            HRASIAT, HRAIANT, HR2MORT, HRUNKNT, HRNRALT,
                            HRTOTLM, HRTOTLW
-                    FROM S2024_OC
+                    FROM S{yr}_OC
                     WHERE UNITID={uid} AND FTPT=1 AND STAFFCAT=1100
                     LIMIT 1
                 """).df()
@@ -4010,7 +4010,7 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                     # All occupational categories diversity breakdown
                     soc_all = con.execute(f"""
                         SELECT OCCUPCAT, HRTOTLT, HRWHITT, HRBKAAT, HRHISPT, HRASIAT, HRAIANT
-                        FROM S2024_OC
+                        FROM S{yr}_OC
                         WHERE UNITID={uid} AND FTPT=1 AND STAFFCAT NOT IN (1100)
                         AND OCCUPCAT IN (100,200,300,400,500,600,700,800,900,1000,1100,1200,1300,1400)
                         ORDER BY HRTOTLT DESC NULLS LAST
@@ -4026,7 +4026,7 @@ def page_profile(df: pd.DataFrame, year: str = "2024-25"):
                 else:
                     st.info("Staff diversity data not available.")
             except Exception as ex:
-                st.info(f"S2024_OC not available. ({ex})")
+                st.info(f"S{yr}_OC not available. ({ex})")
 
         # ── Tab 9: Library ────────────────────────────────────────────────────
         with tabs[9]:
@@ -4179,7 +4179,7 @@ def page_compare(df: pd.DataFrame, cohort_groups: dict, year: str = "2024-25"):
         "Pell Award Rate 8yr %": ("OM1PELLAWDP8",     "pct"),
         "In-State COA":          ("CINSON",           "dollar"),
         "Out-of-State COA":      ("COTSON",           "dollar"),
-        "Tuition 2024-25":       ("TUFEYR3",          "dollar"),
+        f"Tuition {year}":        ("TUFEYR3",          "dollar"),
         "% Receiving Any Aid":   ("ANYAIDP",          "pct"),
         "% Receiving Pell":      ("PGRNT_P",          "pct"),
         "Avg Pell Grant":        ("PGRNT_A",          "dollar"),
@@ -4228,7 +4228,7 @@ def page_compare(df: pd.DataFrame, cohort_groups: dict, year: str = "2024-25"):
         ("Retention Rate FT (%)",   "RET_PCF",        "%"),
         ("8-yr Award Rate (%)",     "OM1TOTLAWDP8",   "%"),
         ("In-State COA ($)",        "CINSON",         "$"),
-        ("Tuition 2024-25 ($)",     "TUFEYR3",        "$"),
+        (f"Tuition {year} ($)",     "TUFEYR3",        "$"),
         ("% Receiving Pell",        "PGRNT_P",        "%"),
         ("Avg Faculty Salary ($)",  "SALTOTL",        "$"),
         ("Student-Faculty Ratio",   "STUFACR",        None),
@@ -4334,7 +4334,7 @@ def page_compare(df: pd.DataFrame, cohort_groups: dict, year: str = "2024-25"):
 def _albion_trends_tab(alb_current, peers_current, peer_label: str, cohort_groups: dict, sel: str):
     """Standalone Albion trends tab called from page_albion (not page_trends)."""
     st.subheader(f"Albion College — Year-over-Year vs. {peer_label}")
-    st.caption("Compares 2023-24 (Final) and 2024-25 (Provisional) IPEDS data.")
+    st.caption("Compares all available IPEDS years in METRICS_LONG.")
 
     trend_df = load_trends()
     alb_trend = trend_df[trend_df["INSTNM"].str.contains("Albion College", case=False, na=False)].sort_values("YEAR")
@@ -4366,16 +4366,23 @@ def _albion_trends_tab(alb_current, peers_current, peer_label: str, cohort_group
         ("Student:Faculty Ratio", "STUFACR",       False, "{:.1f}"),
     ]
 
+    _avail_yrs = sorted(alb_trend["YEAR"].unique())
+    _yr_last   = _avail_yrs[-1] if _avail_yrs else "2024-25"
+    _yr_prev   = _avail_yrs[-2] if len(_avail_yrs) >= 2 else None
+
     tbl_rows = []
     for lbl, col, _, fmt_str in _AT_METRICS:
         row = {"Metric": lbl}
-        for yr in ["2023-24", "2024-25"]:
+        for yr in _avail_yrs:
             av = alb_trend[alb_trend["YEAR"] == yr][col].values
             pv = peer_trend[peer_trend["YEAR"] == yr][col].dropna()
             row[f"Albion {yr}"] = fmt_str.format(float(av[0])) if len(av) and pd.notna(av[0]) else "—"
             row[f"Peers {yr}"]  = fmt_str.format(float(pv.median())) if not pv.empty else "—"
         try:
-            row["Albion Δ"] = f"{float(alb_trend[alb_trend['YEAR']=='2024-25'][col].values[0]) - float(alb_trend[alb_trend['YEAR']=='2023-24'][col].values[0]):+.1f}"
+            if _yr_prev:
+                row["Albion Δ"] = f"{float(alb_trend[alb_trend['YEAR']==_yr_last][col].values[0]) - float(alb_trend[alb_trend['YEAR']==_yr_prev][col].values[0]):+.1f}"
+            else:
+                row["Albion Δ"] = "—"
         except Exception:
             row["Albion Δ"] = "—"
         tbl_rows.append(row)
@@ -4383,7 +4390,7 @@ def _albion_trends_tab(alb_current, peers_current, peer_label: str, cohort_group
 
     st.divider()
     st.subheader(f"Trend Charts — Albion vs. Peer Median ({peer_label})")
-    _years = ["2023-24", "2024-25"]
+    _years = _avail_yrs
     _chart_m = [m for m in _AT_METRICS if m[1] in ["GRRTTOT","RET_PCF","ENRTOT","CINSON","SALTOTL","PGRNT_P"]]
     _cols = st.columns(2)
     for i, (lbl, col, _, fmt_str) in enumerate(_chart_m):
@@ -4418,12 +4425,11 @@ def _albion_trends_tab(alb_current, peers_current, peer_label: str, cohort_group
 
 # ── Page 5: Year-over-Year Trends ────────────────────────────────────────────
 def page_trends(cohort_groups: dict):
-    st.title("Year-over-Year Trends — 2023-24 vs 2024-25")
-    st.caption("Compares final 2023-24 IPEDS data with provisional 2024-25 data.")
-
     trend_df = load_trends()
+    YEARS = sorted(trend_df["YEAR"].unique().tolist())
 
-    YEARS = ["2022-23", "2023-24", "2024-25"]
+    st.title(f"Year-over-Year Trends — {YEARS[0]} → {YEARS[-1]}")
+    st.caption(f"Covers {len(YEARS)} IPEDS reporting years: {', '.join(YEARS)}.")
     METRICS = [
         ("Grad Rate 150% (%)",    "GRRTTOT",      "{:.1f}%"),
         ("FT Retention Rate (%)", "RET_PCF",       "{:.1f}%"),
@@ -4527,7 +4533,9 @@ def page_trends(cohort_groups: dict):
     # TAB 1 — National Trends
     # ════════════════════════════════════════════════════════════════════════
     with t1:
-        st.subheader("National Medians — 2023-24 vs 2024-25")
+        _yr_newest = YEARS[-1]
+        _yr_oldest = YEARS[0]
+        st.subheader(f"National Medians — {_yr_oldest} → {_yr_newest}")
         st.caption("All active institutions reporting each metric.")
 
         med_rows = []
@@ -4536,20 +4544,21 @@ def page_trends(cohort_groups: dict):
                 sub = trend_df[(trend_df["YEAR"] == yr) & trend_df[col].notna()]
                 med_rows.append({"Metric": lbl, "Year": yr, "Median": sub[col].median()})
         med_piv = pd.DataFrame(med_rows).pivot(index="Metric", columns="Year", values="Median")
-        if all(y in med_piv.columns for y in YEARS):
-            med_piv["Change"] = med_piv["2024-25"] - med_piv["2023-24"]
-            med_piv["Chg %"]  = (med_piv["Change"] / med_piv["2023-24"].abs() * 100).round(1)
+        _yr_prev2 = YEARS[-2] if len(YEARS) >= 2 else None
+        if _yr_prev2 and _yr_newest in med_piv.columns and _yr_prev2 in med_piv.columns:
+            med_piv["Change"] = med_piv[_yr_newest] - med_piv[_yr_prev2]
+            med_piv["Chg %"]  = (med_piv["Change"] / med_piv[_yr_prev2].abs() * 100).round(1)
 
         def _cc(v):
             if pd.isna(v): return ""
             return "color:#059669;font-weight:bold" if v > 0 else "color:#DC2626;font-weight:bold"
 
+        _yr_fmt = {yr: (lambda v: f"{v:,.1f}" if pd.notna(v) else "—") for yr in YEARS}
+        _yr_fmt.update({"Change": lambda v: f"{v:+,.1f}" if pd.notna(v) else "—",
+                         "Chg %":  lambda v: f"{v:+.1f}%" if pd.notna(v) else "—"})
         st.dataframe(
             med_piv.style
-                .format({"2023-24": lambda v: f"{v:,.1f}" if pd.notna(v) else "—",
-                         "2024-25": lambda v: f"{v:,.1f}" if pd.notna(v) else "—",
-                         "Change":  lambda v: f"{v:+,.1f}" if pd.notna(v) else "—",
-                         "Chg %":   lambda v: f"{v:+.1f}%" if pd.notna(v) else "—"})
+                .format(_yr_fmt)
                 .map(_cc, subset=["Change"] if "Change" in med_piv.columns else []),
             use_container_width=True,
         )
@@ -4657,9 +4666,11 @@ def page_trends(cohort_groups: dict):
             st.warning("Albion College not found in METRICS_LONG.")
             return
 
-        st.subheader(f"Albion College — 2023-24 vs 2024-25  vs.  {peer_label}")
+        _t2_newest = YEARS[-1]
+        _t2_prev   = YEARS[-2] if len(YEARS) >= 2 else None
+        st.subheader(f"Albion College — {YEARS[0]} → {_t2_newest}  vs.  {peer_label}")
         st.caption(f"{'1-on-1 comparison' if use_single else 'Peer median comparison'} · "
-                   "2023-24 Final vs 2024-25 Provisional")
+                   f"{_t2_prev} → {_t2_newest} change shown in Δ column")
 
         # Change table
         tbl_rows = []
@@ -4672,7 +4683,10 @@ def page_trends(cohort_groups: dict):
                 row[f"Albion {yr}"] = fmt_str.format(float(av[0])) if len(av) and pd.notna(av[0]) else "—"
                 row[f"{peer_col} {yr}"] = fmt_str.format(float(pv.median())) if not pv.empty else "—"
             try:
-                row["Albion Δ"] = f"{float(alb_df[alb_df['YEAR']=='2024-25'][col].values[0]) - float(alb_df[alb_df['YEAR']=='2023-24'][col].values[0]):+.1f}"
+                if _t2_prev:
+                    row["Albion Δ"] = f"{float(alb_df[alb_df['YEAR']==_t2_newest][col].values[0]) - float(alb_df[alb_df['YEAR']==_t2_prev][col].values[0]):+.1f}"
+                else:
+                    row["Albion Δ"] = "—"
             except Exception:
                 row["Albion Δ"] = "—"
             tbl_rows.append(row)
@@ -5187,7 +5201,7 @@ most actionable benchmark for strategic planning.
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("In-State COA", _fmt_dollar(alb_coa),
                   delta=f"{(alb_coa or 0) - peer_coa_med:+,.0f} vs peer median" if alb_coa and not pd.isna(peer_coa_med) else None)
-        c2.metric("Tuition 2024-25", _fmt_dollar(alb_tui))
+        c2.metric(f"Tuition {year}", _fmt_dollar(alb_tui))
         c3.metric("Avg Any Grant",   _fmt_dollar(alb_grant_a),
                   delta=f"{(alb_grant_a or 0) - peer_grant_med:+,.0f} vs peer median" if alb_grant_a and not pd.isna(peer_grant_med) else None)
         c4.metric("% Taking Loans",  _fmt_pct(alb_loan_p))
